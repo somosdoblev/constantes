@@ -22,6 +22,11 @@
 <meta name="twitter:image" content="https://somosdoblev.github.io/constantes/preview.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231E1C19'/%3E%3Cpath d='M18 33l9 9 19-20' fill='none' stroke='%23F3DA82' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="preview-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Constantes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;500;600;700&display=swap">
@@ -496,6 +501,44 @@ function syncShared(){
 let toastTimer=null;
 function toast(msg,ms=4200){const t=document.getElementById('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},ms)}
 
+/* ---------- acceso directo en el celular ---------- */
+let deferredInstall=null;
+const UA=navigator.userAgent||'';
+const isStandalone=()=>{try{return matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}catch(_){return false}};
+const isIOS=()=>/iphone|ipad|ipod/i.test(UA)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const isInApp=()=>/FBAN|FBAV|Instagram|WhatsApp|Line\/|GSA\//i.test(UA);
+const isAndroid=()=>/android/i.test(UA);
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;if(isMember())render()});
+window.addEventListener('appinstalled',()=>{deferredInstall=null;toast('¡Listo! Constantes ya está en tu pantalla de inicio.',6000);if(isMember())render()});
+if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(_){}}
+function installDismissed(){try{return localStorage.getItem('cst-install-off')==='1'}catch(_){return false}}
+function installCard(){
+  if(isStandalone()||installDismissed())return '';
+  return `<div class="card pastel c-lav stack" style="gap:10px"><h3>Lleva Constantes en tu celular</h3>
+    <p style="font-size:14px">Crea un acceso directo en tu pantalla de inicio para marcar tu día con un solo toque.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" data-act="install">📱 Agregar a mi inicio</button><button class="btn btn-sm btn-ghost" data-act="installoff">Ahora no</button></div></div>`;
+}
+function viewInstall(){
+  let title,steps,note='';
+  if(isIOS()){
+    title='Agrégala desde Safari';
+    if(isInApp()||/CriOS|FxiOS|EdgiOS/i.test(UA))note=`<div class="banner">${ico('alert')}<div>En iPhone esto solo funciona en <b>Safari</b>. Si abriste el link desde WhatsApp u otra app, toca el menú (⋯ o ↗) y elige <b>“Abrir en Safari”</b>, y luego sigue estos pasos.</div></div>`;
+    steps=['Toca el botón <b>Compartir</b> de Safari: el cuadro con una flecha hacia arriba, abajo en la pantalla.','Baja en el menú y toca <b>“Agregar a inicio”</b>.','Toca <b>“Agregar”</b>. Verás el ícono de Constantes en tu pantalla de inicio.'];
+  }else if(isAndroid()){
+    title='Agrégala desde Chrome';
+    if(isInApp())note=`<div class="banner">${ico('alert')}<div>Si abriste el link desde WhatsApp u otra app, toca el menú <b>⋮</b> y elige <b>“Abrir en Chrome”</b>, y luego sigue estos pasos.</div></div>`;
+    steps=['Toca el menú <b>⋮</b> de Chrome, arriba a la derecha.','Toca <b>“Agregar a la pantalla principal”</b> o <b>“Instalar app”</b>.','Confirma con <b>“Agregar”</b> o <b>“Instalar”</b>.'];
+  }else{
+    title='Instálala en esta computadora';
+    steps=['En Chrome o Edge, busca el ícono de <b>instalar</b> al final de la barra de direcciones (una pantalla con una flecha).','Toca <b>“Instalar”</b>.','Para tenerla en el celular, abre el mismo link desde tu celular y toca este botón otra vez.'];
+  }
+  return `<div class="panel" role="dialog" aria-modal="true" aria-labelledby="in-title">
+    <div class="card-head" style="margin:0"><h2 id="in-title">${title}</h2><button class="icon-btn" data-act="close" aria-label="Cerrar">${ico('close')}</button></div>
+    ${note}
+    <div class="stack" style="gap:12px">${steps.map((t,i)=>`<div style="display:flex;gap:12px;align-items:flex-start"><span class="chip num" style="flex:none">${i+1}</span><p style="font-size:15px">${t}</p></div>`).join('')}</div>
+    <button class="btn" data-act="close" style="align-self:flex-end">Entendido</button></div>`;
+}
+
 /* ---------- vistas ---------- */
 const isApproved=()=>isOwnerV||(adminDoc.approved||[]).includes(uid);
 const isMember=()=>status==='ready'&&!!myDoc&&isApproved();
@@ -612,6 +655,7 @@ function viewHoy(){
        <div class="card"><div class="card-head"><h3>El grupo hoy</h3><button class="btn btn-ghost btn-sm" data-act="tab" data-tab="grupo">Ver grupo</button></div>
          <div class="stack">${groupToday}</div>
          ${others.length?'':`<p class="muted" style="font-size:13px;margin-top:10px">Comparte esta página para que más personas se unan.</p>`}</div>
+       ${installCard()}
      </aside></div>`;
 }
 
@@ -924,6 +968,7 @@ function viewSheet(){
       ${sh.enabled?`<div class="stack" style="gap:8px">${METRICS.map(m=>`<label class="check-row" for="sf-${m.k}"><input type="checkbox" id="sf-${m.k}" data-act="sfield" data-k="${m.k}" ${sh.fields.includes(m.k)?'checked':''} ${readOnly?'disabled':''}>${esc(m.label)}</label>`).join('')}
         ${sh.fields.length?'':'<p class="muted" style="font-size:13px">Elige qué métricas puede ver el grupo.</p>'}</div>`:''}
     </div>
+    ${isStandalone()?'':`<button class="btn btn-ghost btn-sm" data-act="install" style="align-self:flex-start">📱 Agregar Constantes a mi inicio</button>`}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><span class="muted" style="font-size:13px">${esc(userEmail)} · <button class="link" data-act="signout">Cerrar sesión</button></span>
     <button class="btn" data-act="close">Listo</button></div></div>`;
 }
@@ -935,7 +980,7 @@ function render(){
   if(!joined)main.innerHTML=viewWelcome();
   else main.innerHTML=({hoy:viewHoy,metas:viewMetas,progreso:viewProgreso,metricas:viewInbody,grupo:viewGrupo,admin:viewAdmin}[state.tab]||viewHoy)();
   const sh=document.getElementById('sheet');
-  if(joined&&state.sheet){sh.innerHTML=viewSheet();sh.hidden=false}else{sh.hidden=true;sh.innerHTML=''}
+  if(joined&&state.sheet){sh.innerHTML=state.sheet==='install'?viewInstall():viewSheet();sh.hidden=false}else{sh.hidden=true;sh.innerHTML=''}
 }
 
 /* ---------- acciones ---------- */
@@ -969,6 +1014,8 @@ document.addEventListener('click',e=>{
   switch(a){
    case 'tab':state.tab=b.dataset.tab;state.confirm=null;try{history.replaceState(null,'','#'+state.tab)}catch(_){}render();window.scrollTo(0,0);break;
    case 'profile':state.sheet=true;render();break;
+   case 'install':{if(deferredInstall){const ev=deferredInstall;deferredInstall=null;state.sheet=false;try{ev.prompt();ev.userChoice.then(c=>{if(c&&c.outcome==='accepted')toast('¡Listo! Constantes ya está en tu pantalla de inicio.',6000)}).catch(()=>{})}catch(_){state.sheet='install'}render()}else{state.sheet='install';render()}break}
+   case 'installoff':{try{localStorage.setItem('cst-install-off','1')}catch(_){}toast('Puedes agregarla después desde tu perfil.');render();break}
    case 'close':state.sheet=false;render();break;
    case 'day':state.day=b.dataset.day;render();break;
    case 'toggle':{
