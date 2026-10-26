@@ -136,6 +136,10 @@ input,select{font:inherit;color:var(--ink)}
 .react.on{border-color:var(--ink);background:var(--surface-2)}
 .pastel .react{background:rgba(255,255,255,.6);border-color:transparent;color:var(--on-pastel)}
 .pastel .react.on{background:#fff;border-color:var(--on-pastel)}
+.cm-btn{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;border:1.5px solid var(--ink);background:transparent;font-size:13px;font-weight:700;color:var(--ink);margin-left:auto}
+.cm-btn .ic{width:16px;height:16px}
+.pastel .cm-btn{border-color:var(--on-pastel);color:var(--on-pastel)}
+@media (max-width:480px){.cm-btn{margin-left:0}}
 .cmts{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .cmt{display:flex;gap:8px;align-items:flex-start;font-size:14px}
 .cmt-body{flex:1;min-width:0;background:var(--surface-2);border-radius:14px;padding:7px 12px;overflow-wrap:anywhere}
@@ -364,6 +368,7 @@ const P={
  trash:'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13',
  alert:'M12 4l9 16H3zM12 10v4M12 17h.01',
  close:'M6 6l12 12M18 6L6 18',
+ chat:'M4 5h16v11H9l-5 4z',
  nosoda:'M7.5 4h9l-1.4 16H8.9zM8 9h8M4 4l16 16',
  nosugar:'M6 8.5l6-3 6 3v7l-6 3-6-3zM6 8.5l6 3 6-3M12 11.5v7M4 4l16 16'
 };
@@ -386,9 +391,8 @@ const SUGERIDAS=[
 const METRICS=[
  {k:'peso',label:'Peso',unit:'kg',dec:1,min:20,max:300},
  {k:'musculo',label:'Masa muscular esquelética',short:'Músculo',unit:'kg',dec:1,min:5,max:120},
- {k:'grasa',label:'Grasa corporal',unit:'%',dec:1,min:2,max:70},
- {k:'visceral',label:'Grasa visceral',unit:'nivel',dec:0,min:1,max:30},
- {k:'tmb',label:'Tasa metabólica basal',short:'TMB',unit:'kcal',dec:0,min:500,max:5000}
+ {k:'masaGrasa',label:'Masa grasa corporal',short:'Masa grasa',unit:'kg',dec:1,min:1,max:150},
+ {k:'visceral',label:'Grasa visceral',unit:'nivel',dec:0,min:1,max:30}
 ];
 const freqText=g=>g.freq==='daily'?'Diaria':g.freq==='weekly'?`${g.target} días por semana`:`${g.target} días al mes`;
 
@@ -572,7 +576,7 @@ function thread(key){
   const open=state.openThread===key;
   const bar=REACTS.map(e=>{const ids=Array.isArray(r[e])?r[e]:[];const mine=ids.includes(uid);const who=ids.map(nameOf).filter(Boolean).join(', ');
     return `<button class="react ${mine?'on':''}" data-act="react" data-k="${esc(key)}" data-e="${e}" aria-pressed="${mine}" ${who?`title="${esc(who)}"`:''}>${e}${ids.length?`<span class="num">${ids.length}</span>`:''}</button>`}).join('')
-    +`<button class="react" data-act="thread" data-k="${esc(key)}" aria-expanded="${open}">💬${cm.length?`<span class="num">${cm.length}</span>`:''}</button>`;
+    +`<button class="cm-btn" data-act="thread" data-k="${esc(key)}" aria-expanded="${open}">${ico('chat')}${open?'Ocultar comentarios':cm.length?`Ver ${cm.length} ${cm.length===1?'comentario':'comentarios'}`:'Comentar'}</button>`;
   const list=open?`<div class="cmts">${cm.map(x=>`<div class="cmt">${avatar(x.uid,24)}<div class="cmt-body"><b>${esc(nameOf(x.uid)||'Alguien')}</b><small>${ago(x.at||0)}</small><br>${esc(x.text)}</div>${x.uid===uid||isOwnerV?`<button class="link" data-act="delcm" data-k="${esc(key)}" data-id="${esc(x.id)}" aria-label="Borrar comentario" style="font-size:12px">Borrar</button>`:''}</div>`).join('')}
     <form class="cm-form" data-k="${esc(key)}"><input class="input" id="cm-${esc(key)}" maxlength="280" placeholder="Escribe un comentario…" autocomplete="off"><button class="btn btn-sm" type="submit">Enviar</button></form></div>`:'';
   return `<div class="reacts">${bar}</div>${list}`;
