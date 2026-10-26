@@ -584,6 +584,24 @@ function thread(key){
 function cheerWrite(key,data){
   if(!db)return;db.doc('cheers/'+key).merge(data).catch(e=>{toast(e&&e.code==='invalid_argument'?'No se pudo guardar. Revisa que hayas pegado las reglas nuevas en Firebase.':'No se pudo guardar. Revisa tu conexión.',6000)});
 }
+/* Mejoras en métricas compartidas: solo se celebran avances, nunca retrocesos. */
+const BETTER={musculo:1,masaGrasa:-1,visceral:-1};
+function metricChanges(q){
+  const sh=q&&q.share&&q.share.enabled?(q.share.fields||[]).filter(f=>METRICS.some(m=>m.k===f)):[];
+  const es=(Array.isArray(q&&q.inbodyShared)?q.inbodyShared:[]).filter(e=>e&&typeof e.date==='string').sort((a,b)=>a.date.localeCompare(b.date));
+  return sh.map(f=>{const w=es.filter(e=>typeof e[f]==='number');if(!w.length)return null;const mm=METRICS.find(m=>m.k===f);
+    const last=w[w.length-1],prev=w.length>1?w[w.length-2]:null,d=prev?last[f]-prev[f]:null;
+    const improved=prev&&BETTER[f]?Math.sign(d)===BETTER[f]&&Math.abs(d)>=(mm.dec?0.1:1):false;
+    return{f,mm,last,prev,d,improved}}).filter(Boolean);
+}
+function metricWin(id){
+  const ch=metricChanges(people[id]).filter(x=>x.improved);if(!ch.length)return null;
+  const date=ch.map(x=>x.last.date).sort().pop();
+  const items=ch.filter(x=>x.last.date===date).map(x=>{const v=fmtNum(Math.abs(x.d),x.mm.dec);
+    return x.f==='visceral'?`bajó ${v} ${Math.abs(x.d)===1?'nivel':'niveles'} de grasa visceral`:x.f==='musculo'?`subió ${v} kg de masa muscular`:`bajó ${v} kg de masa grasa`});
+  return{date,items};
+}
+
 function viewPerson(id){
   const q=people[id];if(!q)return '';
   const k=monthKey(T0),st=streak(q.joined||T0,anyCheck(q)),sp=sponsorOf(id),ms=periodScore(q,monthStart(k),monthEnd(k));
@@ -594,16 +612,17 @@ function viewPerson(id){
     return `<div class="prog-row"><span class="tile c-${g.color}">${ico(g.icon)}</span><div style="min-width:0"><b style="overflow-wrap:anywhere">${esc(g.name)}</b>${today?' <span class="chip">✓ Hoy</span>':''}
       <div class="bar" style="margin-top:6px"><span class="c-${g.color}" style="width:${Math.round(r.ratio*100)}%"></span></div><span class="muted" style="font-size:12px">${esc(freqText(g))}${extra}</span></div>
       <span class="num"><b>${r.done}</b>/${r.target}</span></div>`}).join(''):'<p class="muted">Todavía no tiene metas activas.</p>';
-  const sh=q.share&&q.share.enabled?(q.share.fields||[]).filter(f=>METRICS.some(m=>m.k===f)):[];
-  const es=Array.isArray(q.inbodyShared)?q.inbodyShared:[];
-  const mets=sh.map(f=>{const mm=METRICS.find(m=>m.k===f);const w=es.filter(e=>typeof e[f]==='number');if(!w.length)return '';return `<div class="metric"><span class="eyebrow">${esc(mm.short||mm.label)}</span><span class="v num" style="font-size:22px">${fmtNum(w[w.length-1][f],mm.dec)}<small>${mm.unit}</small></span></div>`}).join('');
+  const mets=metricChanges(q).map(x=>{const dTxt=x.prev?`${x.d>0?'+':x.d<0?'−':''}${fmtNum(Math.abs(x.d),x.mm.dec)} vs. ${fmtShort(x.prev.date)}`:'Primer registro';
+    return `<div class="metric"><span class="eyebrow">${esc(x.mm.short||x.mm.label)}</span><span class="v num" style="font-size:22px">${fmtNum(x.last[x.f],x.mm.dec)}<small>${x.mm.unit}</small></span>
+      <span class="muted num" style="font-size:12px">${dTxt}</span>${x.improved?'<span class="chip" style="align-self:flex-start">📈 Mejoró</span>':''}</div>`}).join('');
+  const lastDate=metricChanges(q).map(x=>x.last.date).sort().pop();
   const kids=sponsoredBy(id);
   return `<div class="panel" role="dialog" aria-modal="true" aria-labelledby="pp-title">
     <div class="card-head" style="margin:0"><div style="display:flex;align-items:center;gap:14px;min-width:0">${avatar(id,88)}<div style="min-width:0"><h2 id="pp-title" style="overflow-wrap:anywhere">${esc(q.name)}</h2>
       <p class="muted" style="font-size:13px">En el reto desde el ${fmtShort(q.joined||T0)}</p></div></div><button class="icon-btn" data-act="close" aria-label="Cerrar">${ico('close')}</button></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${sp?`<span class="chip">Sponsor: ${esc(nameOf(sp))}</span>`:''}${kids.length?`<span class="chip">Sponsor de ${kids.map(x=>esc(nameOf(x))).join(', ')}</span>`:''}<span class="chip num">${ico('flame')}${st.cur} ${st.cur===1?'día seguido':'días seguidos'}</span><span class="chip num">${ms==null?'—':Math.round(ms*100)+'%'} en ${MESES[Number(k.slice(5))-1]}</span></div>
     <div class="card"><div class="card-head"><h3>Sus metas</h3><span class="chip num">${goals.length}</span></div><div class="stack" style="gap:14px">${rows}</div></div>
-    ${mets?`<div class="card"><div class="card-head"><h3>Métricas que comparte</h3>${ico('lock')}</div><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px">${mets}</div></div>`:''}
+    ${mets?`<div class="card"><div class="card-head"><h3>Métricas que comparte</h3>${ico('lock')}</div>${lastDate?`<p class="muted" style="font-size:12px;margin:-6px 0 12px">Último registro: ${fmtLong(lastDate)}</p>`:''}<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px">${mets}</div></div>`:''}
     <button class="btn" data-act="close" style="align-self:flex-end">Cerrar</button></div>`;
 }
 
@@ -996,9 +1015,13 @@ function viewGrupo(){
   if(isCur&&Number(T0.slice(8))<=3&&past.length&&past[0].m===addMonths(cur,-1)){const w=past[0];
     winner=`<div class="card pastel c-olive win win-big"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0;flex:1"><span class="eyebrow">Cierre de ${MESES[Number(w.m.slice(5))-1]}</span><h2 class="win-title">¡Primer lugar: ${w.w.map(x=>esc(people[x.id].name)).join(' y ')}!</h2>
       <div class="stack" style="gap:8px;margin-top:12px">${w.top.map(t=>`<div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:22px">${MEDAL[t.place-1]}</span>${avatar(t.id,t.place===1?44:32)}<b style="flex:1;min-width:0">${esc(people[t.id].name)}</b><span class="num"><b>${Math.round(t.s*100)}%</b></span></div>`).join('')}</div></div></div>`}
-  const celebra=(isCur?specialCards():'')+winner+(isCur&&todayAch.length?`<div class="card pastel ${anyMonth?'c-rose win-big':'c-butter'} win"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0;flex:1"><h2 class="win-title">¡Hoy celebramos!</h2><div class="stack" style="gap:12px;margin-top:10px">${todayAch.map(x=>`<div class="event"><div style="display:flex;align-items:center;gap:10px">${avatar(x.id,32)}<span style="min-width:0"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}</span></div>${thread(x.id+'_'+T0)}</div>`).join('')}</div></div></div>`:'');
+  const mWins=visibleIds().map(id=>({id,w:metricWin(id)})).filter(x=>x.w);
+  const metricEv=(x)=>`<div class="event"><div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:20px">📈</span>${avatar(x.id,32)}<span style="min-width:0;flex:1"><b>${esc(people[x.id].name)}</b> ${esc(x.w.items.join(' y '))} en su último registro${x.w.date===T0?'':`<br><span class="muted" style="font-size:12px">${fmtLong(x.w.date)}</span>`}</span></div>${thread('metric_'+x.id+'_'+x.w.date)}</div>`;
+  const todayM=mWins.filter(x=>x.w.date===T0);
+  const celebra=(isCur?specialCards():'')+winner+(isCur&&(todayAch.length||todayM.length)?`<div class="card pastel ${anyMonth?'c-rose win-big':'c-butter'} win"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0;flex:1"><h2 class="win-title">¡Hoy celebramos!</h2><div class="stack" style="gap:12px;margin-top:10px">${todayAch.map(x=>`<div class="event"><div style="display:flex;align-items:center;gap:10px">${avatar(x.id,32)}<span style="min-width:0"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}</span></div>${thread(x.id+'_'+T0)}</div>`).join('')}${todayM.map(metricEv).join('')}</div></div></div>`:'');
   const feed=[];for(let i=1;i<=6&&feed.length<12;i++){const d=addDays(T0,-i);for(const id of visibleIds()){const a=achievements(people[id],d);if(a.length&&feed.length<12)feed.push({id,d,a})}}
-  const feedHtml=feed.length?feed.map(x=>`<div class="event"><div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:20px">🏆</span>${avatar(x.id,32)}<span style="min-width:0;flex:1"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}<br><span class="muted" style="font-size:12px">${fmtLong(x.d)}</span></span></div>${thread(x.id+'_'+x.d)}</div>`).join(''):'<p class="muted" style="font-size:14px">Aquí aparecerán las metas cumplidas de los últimos días.</p>';
+  const weekM=mWins.filter(x=>x.w.date<T0&&x.w.date>=addDays(T0,-6));
+  const feedHtml=(feed.length||weekM.length)?weekM.map(metricEv).join('')+feed.map(x=>`<div class="event"><div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:20px">🏆</span>${avatar(x.id,32)}<span style="min-width:0;flex:1"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}<br><span class="muted" style="font-size:12px">${fmtLong(x.d)}</span></span></div>${thread(x.id+'_'+x.d)}</div>`).join(''):'<p class="muted" style="font-size:14px">Aquí aparecerán las metas cumplidas de los últimos días.</p>';
   const since=id=>(adminDoc.approvedAt||{})[id]||people[id].joined||T0;
   const tsOf=id=>Number((adminDoc.approvedTs||{})[id])||0;
   const fresh=visibleIds().filter(id=>id!==adminDoc.ownerId&&(tsOf(id)?Date.now()-tsOf(id)<864e5:since(id)===T0)).sort((a,b)=>tsOf(b)-tsOf(a));
@@ -1022,8 +1045,6 @@ function viewGrupo(){
          <p class="muted" style="font-size:12px;margin-top:12px">Cuentan los meses completos con 80% o más de avance y el promedio mensual, a partir de 2 meses en el reto.</p></div>
        <div class="card"><div class="card-head"><h3>Logros de la semana</h3></div><div class="stack" style="gap:12px">${feedHtml}</div></div>
        <div class="card"><div class="card-head"><h3>Podios anteriores</h3>${ico('trophy')}</div><div class="stack" style="gap:16px">${pastHtml}</div></div>
-       <div class="card"><div class="card-head"><h3>Métricas compartidas</h3>${ico('lock')}</div>${shared.length?sharedHtml:'<p class="muted" style="font-size:14px">Nadie ha compartido métricas todavía. Cada quien decide desde su perfil.</p>'}
-         <p class="muted" style="font-size:12px;margin-top:12px">Las métricas corporales no cuentan para el ranking.</p></div>
        ${inviteCard()}
      </aside></div>`;
 }
