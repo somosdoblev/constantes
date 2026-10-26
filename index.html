@@ -128,7 +128,30 @@ input,select{font:inherit;color:var(--ink)}
 
 /* avatar */
 .av{border-radius:50%;object-fit:cover;display:inline-grid;place-items:center;flex:none;font-family:var(--display);font-weight:700;color:var(--on-pastel);overflow:hidden}
-.av-40{width:40px;height:40px;font-size:15px}.av-44{width:44px;height:44px;font-size:16px}.av-32{width:32px;height:32px;font-size:13px}.av-88{width:88px;height:88px;font-size:30px}
+.av-40{width:40px;height:40px;min-width:40px;font-size:15px}.av-44{width:44px;height:44px;min-width:44px;font-size:16px}.av-32{width:32px;height:32px;min-width:32px;font-size:13px}.av-88{width:88px;height:88px;min-width:88px;font-size:30px}
+.av{max-width:none;aspect-ratio:1/1;flex-shrink:0;object-position:center}
+.av-24{width:24px;height:24px;min-width:24px;font-size:11px}
+.reacts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.react{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);font-size:14px;font-weight:600;color:var(--ink);line-height:1.3}
+.react.on{border-color:var(--ink);background:var(--surface-2)}
+.pastel .react{background:rgba(255,255,255,.6);border-color:transparent;color:var(--on-pastel)}
+.pastel .react.on{background:#fff;border-color:var(--on-pastel)}
+.cmts{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.cmt{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+.cmt-body{flex:1;min-width:0;background:var(--surface-2);border-radius:14px;padding:7px 12px;overflow-wrap:anywhere}
+.pastel .cmt-body{background:rgba(255,255,255,.65)}
+.cmt-body small{color:var(--muted);font-size:12px;margin-left:6px}
+.pastel .cmt-body small{color:var(--on-pastel);opacity:.65}
+.cm-form{display:flex;gap:8px;margin-top:4px}
+.cm-form .input{padding:8px 12px;font-size:14px}
+.pastel .cm-form .input{background:rgba(255,255,255,.75);border-color:transparent;color:var(--on-pastel)}
+.event{padding-top:10px;border-top:1px solid var(--line)}
+.pastel .event{border-top-color:rgba(30,28,25,.12)}
+.event:first-child{border-top:0;padding-top:0}
+.rank{cursor:pointer;text-align:left;width:100%;color:var(--on-pastel)}
+.rank:hover{filter:brightness(1.02)}
+.person-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border-radius:12px}
+img.av{display:inline-block}
 
 /* forms */
 label.field{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:13px;min-width:0}
@@ -282,7 +305,7 @@ const FIRESTORE_DB="constantes";
 
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {getFirestore,doc as fdoc,collection as fcol,setDoc,deleteDoc,onSnapshot} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import {getFirestore,doc as fdoc,collection as fcol,setDoc,deleteDoc,onSnapshot,arrayUnion,arrayRemove} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 /* ---------- utilidades de fecha (zona America/Mexico_City) ---------- */
 const TZ='America/Mexico_City';
@@ -377,7 +400,8 @@ let people={};               // uid -> doc
 let myDoc=null;              // copia local editable
 let inbody={entries:[]};     // privado
 let isOwnerV=false;
-const ADMIN_DEFAULT=()=>({celebrations:[],hidden:[],ownerId:null,sponsors:{},approved:[],roster:{}});
+const ADMIN_DEFAULT=()=>({celebrations:[],hidden:[],ownerId:null,sponsors:{},approved:[],roster:{},approvedAt:{},approvedTs:{}});
+let cheers={};                // logros y bienvenidas: key -> {reactions,comments}
 let adminDoc=ADMIN_DEFAULT();
 const T0=todayStr();
 const state={tab:'hoy',day:T0,calMonth:monthKey(T0),groupMonth:monthKey(T0),metric:'visceral',confirm:null,newGoal:{name:'',freq:'daily',target:3,icon:'target'},joinName:'',joinPhoto:null,joinBusy:false,sheet:false,celEmoji:'🎉',joinSponsor:'',loginMode:'signin',loginEmail:'',authBusy:false};
@@ -425,7 +449,7 @@ function achievements(p,day){
     if(!isActive(g,day)||!isDone(p,g,day))continue;
     const k=monthKey(day),ms=monthStart(k),mr=goalProgress(p,g,ms,monthEnd(k));
     let c=0;eachDay(ms,day,d=>{if(isDone(p,g,d))c++});
-    if(mr&&c===mr.target){out.push({g,level:'month',txt:`${g.name}: ${mr.target} de ${mr.target} en ${MESES[Number(k.slice(5))-1]}`});continue}
+    if(mr&&c===mr.target&&g.created<=ms){out.push({g,level:'month',txt:`${g.name}: ${mr.target} de ${mr.target} en ${MESES[Number(k.slice(5))-1]}`});continue}
     if(g.freq==='monthly')continue;
     const ws=weekStart(day),wr=goalProgress(p,g,ws,addDays(ws,6));
     let w=0;eachDay(ws,day,d=>{if(isDone(p,g,d))w++});
@@ -539,6 +563,46 @@ function viewInstall(){
     <button class="btn" data-act="close" style="align-self:flex-end">Entendido</button></div>`;
 }
 
+/* ---------- reacciones y comentarios ---------- */
+const REACTS=['👏','🔥','💪','🎉','🙌'];
+function ago(ms){const m=Math.round((Date.now()-ms)/60000);if(m<1)return 'ahora';if(m<60)return `hace ${m} min`;const h=Math.round(m/60);if(h<24)return `hace ${h} h`;const d=Math.round(h/24);return d===1?'ayer':`hace ${d} días`}
+function thread(key){
+  if(!isApproved())return '';
+  const c=cheers[key]||{},r=c.reactions||{},cm=(Array.isArray(c.comments)?c.comments:[]).filter(x=>x&&typeof x.text==='string').sort((a,b)=>(a.at||0)-(b.at||0));
+  const open=state.openThread===key;
+  const bar=REACTS.map(e=>{const ids=Array.isArray(r[e])?r[e]:[];const mine=ids.includes(uid);const who=ids.map(nameOf).filter(Boolean).join(', ');
+    return `<button class="react ${mine?'on':''}" data-act="react" data-k="${esc(key)}" data-e="${e}" aria-pressed="${mine}" ${who?`title="${esc(who)}"`:''}>${e}${ids.length?`<span class="num">${ids.length}</span>`:''}</button>`}).join('')
+    +`<button class="react" data-act="thread" data-k="${esc(key)}" aria-expanded="${open}">💬${cm.length?`<span class="num">${cm.length}</span>`:''}</button>`;
+  const list=open?`<div class="cmts">${cm.map(x=>`<div class="cmt">${avatar(x.uid,24)}<div class="cmt-body"><b>${esc(nameOf(x.uid)||'Alguien')}</b><small>${ago(x.at||0)}</small><br>${esc(x.text)}</div>${x.uid===uid||isOwnerV?`<button class="link" data-act="delcm" data-k="${esc(key)}" data-id="${esc(x.id)}" aria-label="Borrar comentario" style="font-size:12px">Borrar</button>`:''}</div>`).join('')}
+    <form class="cm-form" data-k="${esc(key)}"><input class="input" id="cm-${esc(key)}" maxlength="280" placeholder="Escribe un comentario…" autocomplete="off"><button class="btn btn-sm" type="submit">Enviar</button></form></div>`:'';
+  return `<div class="reacts">${bar}</div>${list}`;
+}
+function cheerWrite(key,data){
+  if(!db)return;db.doc('cheers/'+key).merge(data).catch(e=>{toast(e&&e.code==='invalid_argument'?'No se pudo guardar. Revisa que hayas pegado las reglas nuevas en Firebase.':'No se pudo guardar. Revisa tu conexión.',6000)});
+}
+function viewPerson(id){
+  const q=people[id];if(!q)return '';
+  const k=monthKey(T0),st=streak(q.joined||T0,anyCheck(q)),sp=sponsorOf(id),ms=periodScore(q,monthStart(k),monthEnd(k));
+  const goals=(q.goals||[]).filter(g=>!g.archived);
+  const rows=goals.length?goals.map(g=>{const r=goalProgress(q,g,monthStart(k),monthEnd(k))||{done:0,target:1,ratio:0};
+    let extra='';if(g.freq==='daily'){const s2=streak(g.created,d=>isDone(q,g,d));extra=s2.cur?` · racha ${s2.cur}`:''}
+    const today=isActive(g,T0)&&isDone(q,g,T0);
+    return `<div class="prog-row"><span class="tile c-${g.color}">${ico(g.icon)}</span><div style="min-width:0"><b style="overflow-wrap:anywhere">${esc(g.name)}</b>${today?' <span class="chip">✓ Hoy</span>':''}
+      <div class="bar" style="margin-top:6px"><span class="c-${g.color}" style="width:${Math.round(r.ratio*100)}%"></span></div><span class="muted" style="font-size:12px">${esc(freqText(g))}${extra}</span></div>
+      <span class="num"><b>${r.done}</b>/${r.target}</span></div>`}).join(''):'<p class="muted">Todavía no tiene metas activas.</p>';
+  const sh=q.share&&q.share.enabled?(q.share.fields||[]).filter(f=>METRICS.some(m=>m.k===f)):[];
+  const es=Array.isArray(q.inbodyShared)?q.inbodyShared:[];
+  const mets=sh.map(f=>{const mm=METRICS.find(m=>m.k===f);const w=es.filter(e=>typeof e[f]==='number');if(!w.length)return '';return `<div class="metric"><span class="eyebrow">${esc(mm.short||mm.label)}</span><span class="v num" style="font-size:22px">${fmtNum(w[w.length-1][f],mm.dec)}<small>${mm.unit}</small></span></div>`}).join('');
+  const kids=sponsoredBy(id);
+  return `<div class="panel" role="dialog" aria-modal="true" aria-labelledby="pp-title">
+    <div class="card-head" style="margin:0"><div style="display:flex;align-items:center;gap:14px;min-width:0">${avatar(id,88)}<div style="min-width:0"><h2 id="pp-title" style="overflow-wrap:anywhere">${esc(q.name)}</h2>
+      <p class="muted" style="font-size:13px">En el reto desde el ${fmtShort(q.joined||T0)}</p></div></div><button class="icon-btn" data-act="close" aria-label="Cerrar">${ico('close')}</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${sp?`<span class="chip">Sponsor: ${esc(nameOf(sp))}</span>`:''}${kids.length?`<span class="chip">Sponsor de ${kids.map(x=>esc(nameOf(x))).join(', ')}</span>`:''}<span class="chip num">${ico('flame')}${st.cur} ${st.cur===1?'día seguido':'días seguidos'}</span><span class="chip num">${ms==null?'—':Math.round(ms*100)+'%'} en ${MESES[Number(k.slice(5))-1]}</span></div>
+    <div class="card"><div class="card-head"><h3>Sus metas</h3><span class="chip num">${goals.length}</span></div><div class="stack" style="gap:14px">${rows}</div></div>
+    ${mets?`<div class="card"><div class="card-head"><h3>Métricas que comparte</h3>${ico('lock')}</div><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px">${mets}</div></div>`:''}
+    <button class="btn" data-act="close" style="align-self:flex-end">Cerrar</button></div>`;
+}
+
 /* ---------- vistas ---------- */
 const isApproved=()=>isOwnerV||(adminDoc.approved||[]).includes(uid);
 const isMember=()=>status==='ready'&&!!myDoc&&isApproved();
@@ -622,17 +686,18 @@ function viewHoy(){
       <span class="tile c-${g.color||'butter'}">${ico(g.icon)}</span>
       <span class="g-txt"><span class="g-name">${esc(g.name)}</span><br><span class="g-sub">${esc(goalRowSub(p,g,day))}</span></span>
       <span class="tick">${ico('check')}</span></button>`}).join('')
+    :(p.goals||[]).some(g=>!g.archived)?`<div class="card empty"><h3>Este día no tenías metas activas</h3><p class="muted">Tus metas cuentan desde el día en que las creaste. Desde ahí aparecen solas todos los días para que las marques.</p><button class="btn btn-sm" data-act="day" data-day="${T0}">Ir a hoy</button></div>`
     :`<div class="card empty"><h3>Aún no tienes metas</h3><p class="muted">Agrega tus primeras metas para empezar a marcar tus días.</p><button class="btn btn-sm" data-act="tab" data-tab="metas">${ico('plus')}Agregar metas</button></div>`;
   const ws=weekStart(T0),wsc=periodScore(p,ws,addDays(ws,6));
   const others=visibleIds().filter(id=>id!==uid);
   const groupToday=visibleIds().map(id=>{const q=people[id];const gs=(q.goals||[]).filter(g=>isActive(g,T0));const n=gs.filter(g=>isDone(q,g,T0)).length;
-     return `<div style="display:flex;align-items:center;gap:10px">${avatar(id,32)}<span style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(q.name)}${id===uid?' <span class="chip">Tú</span>':''}</span><span class="num"><b>${n}</b>/${gs.length}</span></div>`}).join('');
+     return `<button class="person-row" data-act="person" data-id="${esc(id)}">${avatar(id,32)}<span style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(q.name)}${id===uid?' <span class="chip">Tú</span>':''}</span><span class="num"><b>${n}</b>/${gs.length}</span></button>`}).join('');
   const ach=achievements(p,day);
   const lst=arr=>arr.map(a=>`<b>${esc(a.txt)}</b>`).join(', ');
   const mAch=ach.filter(a=>a.level==='month'),wAch=ach.filter(a=>a.level==='week'),when=day===T0?'Hoy':'Ese día';
   let achCard='';
-  if(mAch.length)achCard+=`<div class="card pastel c-rose win win-big"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0"><span class="eyebrow">Meta del mes</span><h2 class="win-title">¡Lo lograste, ${esc(p.name)}!</h2><p>${when} completaste tu meta del mes: ${lst(mAch)}. Un mes entero de constancia.</p></div></div>`;
-  if(wAch.length)achCard+=`<div class="card pastel c-butter win"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0"><span class="eyebrow">Meta de la semana</span><h2 class="win-title">¡Semana cumplida, ${esc(p.name)}!</h2><p>${when} completaste: ${lst(wAch)}.</p></div></div>`;
+  if(mAch.length)achCard+=`<div class="card pastel c-rose win win-big"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0"><span class="eyebrow">Meta del mes</span><h2 class="win-title">¡Lo lograste, ${esc(p.name)}!</h2><p>${when} completaste tu meta del mes: ${lst(mAch)}. Un mes entero de constancia.</p>${wAch.length?'':thread(uid+'_'+day)}</div></div>`;
+  if(wAch.length)achCard+=`<div class="card pastel c-butter win"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0"><span class="eyebrow">Meta de la semana</span><h2 class="win-title">¡Semana cumplida, ${esc(p.name)}!</h2><p>${when} completaste: ${lst(wAch)}.</p>${thread(uid+'_'+day)}</div></div>`;
   const prevK=addMonths(monthKey(T0),-1),prevName=MESES[Number(prevK.slice(5))-1];
   if(Number(T0.slice(8))<=3&&(p.joined||T0)<=monthEnd(prevK)){
     const sc=periodScore(p,monthStart(prevK),monthEnd(prevK));
@@ -883,7 +948,7 @@ function viewGrupo(){
   }
   const cards=ranked.map((x,i)=>{
     const st=streak(x.p.joined||T0,anyCheck(x.p));const act=activeDaysIn(x.p,k);
-    return `<article class="card pastel c-${personColor(x.id)} rank"><span class="pos num">${x.place&&x.place<=3?MEDAL[x.place-1]:i+1}</span>${avatar(x.id,44)}
+    return `<article class="card pastel c-${personColor(x.id)} rank" role="button" tabindex="0" data-act="person" data-id="${esc(x.id)}" aria-label="Ver perfil de ${esc(x.p.name)}"><span class="pos num">${x.place&&x.place<=3?MEDAL[x.place-1]:i+1}</span>${avatar(x.id,44)}
       <div class="who"><b>${esc(x.p.name)}</b>${x.id===uid?' <span class="chip">Tú</span>':''}
         <div class="meta">${sponsorOf(x.id)?`<span class="chip">Sponsor: ${esc(nameOf(sponsorOf(x.id)))}</span>`:''}<span class="chip num">${act} ${act===1?'día activo':'días activos'}</span>${isCur&&st.cur?`<span class="chip num">${ico('flame')}${st.cur}</span>`:''}</div></div>
       <div style="display:flex;align-items:center;gap:16px">${miniCal(x.p,k)}${ring(x.s,64,7)}</div></article>`}).join('')||`<p class="muted">Nadie estaba en el reto en ${mesK}.</p>`;
@@ -927,13 +992,19 @@ function viewGrupo(){
   if(isCur&&Number(T0.slice(8))<=3&&past.length&&past[0].m===addMonths(cur,-1)){const w=past[0];
     winner=`<div class="card pastel c-olive win win-big"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0;flex:1"><span class="eyebrow">Cierre de ${MESES[Number(w.m.slice(5))-1]}</span><h2 class="win-title">¡Primer lugar: ${w.w.map(x=>esc(people[x.id].name)).join(' y ')}!</h2>
       <div class="stack" style="gap:8px;margin-top:12px">${w.top.map(t=>`<div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:22px">${MEDAL[t.place-1]}</span>${avatar(t.id,t.place===1?44:32)}<b style="flex:1;min-width:0">${esc(people[t.id].name)}</b><span class="num"><b>${Math.round(t.s*100)}%</b></span></div>`).join('')}</div></div></div>`}
-  const celebra=(isCur?specialCards():'')+winner+(isCur&&todayAch.length?`<div class="card pastel ${anyMonth?'c-rose win-big':'c-butter'} win"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0;flex:1"><h2 class="win-title">¡Hoy celebramos!</h2><div class="stack" style="gap:8px;margin-top:10px">${todayAch.map(x=>`<div style="display:flex;align-items:center;gap:10px">${avatar(x.id,32)}<span style="min-width:0"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}</span></div>`).join('')}</div></div></div>`:'');
+  const celebra=(isCur?specialCards():'')+winner+(isCur&&todayAch.length?`<div class="card pastel ${anyMonth?'c-rose win-big':'c-butter'} win"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0;flex:1"><h2 class="win-title">¡Hoy celebramos!</h2><div class="stack" style="gap:12px;margin-top:10px">${todayAch.map(x=>`<div class="event"><div style="display:flex;align-items:center;gap:10px">${avatar(x.id,32)}<span style="min-width:0"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}</span></div>${thread(x.id+'_'+T0)}</div>`).join('')}</div></div></div>`:'');
   const feed=[];for(let i=1;i<=6&&feed.length<12;i++){const d=addDays(T0,-i);for(const id of visibleIds()){const a=achievements(people[id],d);if(a.length&&feed.length<12)feed.push({id,d,a})}}
-  const feedHtml=feed.length?feed.map(x=>`<div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:20px">🏆</span>${avatar(x.id,32)}<span style="min-width:0;flex:1"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}<br><span class="muted" style="font-size:12px">${fmtLong(x.d)}</span></span></div>`).join(''):'<p class="muted" style="font-size:14px">Aquí aparecerán las metas cumplidas de los últimos días.</p>';
+  const feedHtml=feed.length?feed.map(x=>`<div class="event"><div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:20px">🏆</span>${avatar(x.id,32)}<span style="min-width:0;flex:1"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}<br><span class="muted" style="font-size:12px">${fmtLong(x.d)}</span></span></div>${thread(x.id+'_'+x.d)}</div>`).join(''):'<p class="muted" style="font-size:14px">Aquí aparecerán las metas cumplidas de los últimos días.</p>';
+  const since=id=>(adminDoc.approvedAt||{})[id]||people[id].joined||T0;
+  const tsOf=id=>Number((adminDoc.approvedTs||{})[id])||0;
+  const fresh=visibleIds().filter(id=>id!==adminDoc.ownerId&&(tsOf(id)?Date.now()-tsOf(id)<864e5:since(id)===T0)).sort((a,b)=>tsOf(b)-tsOf(a));
+  const welcome=isCur&&fresh.length?`<div class="card pastel c-lav win"><span class="trophy" aria-hidden="true">👋</span><div style="min-width:0;flex:1"><span class="eyebrow">${fresh.length===1?'Nueva persona en el reto':'Nuevas personas en el reto'}</span>
+    <div class="stack" style="gap:12px;margin-top:8px">${fresh.map(id=>{const sp=sponsorOf(id);return `<div class="event"><div style="display:flex;align-items:center;gap:12px">${avatar(id,44)}<div style="min-width:0"><h2 class="win-title" style="font-size:clamp(20px,2.6vw,24px)">¡Démosle la bienvenida a ${esc(people[id].name)}!</h2>
+      <p style="font-size:14px;margin-top:2px">${sp?`Llegó por invitación de ${esc(nameOf(sp))}. `:''}Se unió ${tsOf(id)?ago(tsOf(id)):'hoy'}.</p></div></div>${thread('welcome_'+id)}</div>`}).join('')}</div></div></div>`:'';
   const minK=firstK;
   return topBar('El grupo',`${ids.length} ${ids.length===1?'persona':'personas'} en el reto de ${mesK}. Se compara el % de avance de cada quien contra sus propias metas.`)+banners()+
    `<div class="grid g-main">
-     <section class="stack" style="gap:12px">${celebra}
+     <section class="stack" style="gap:12px">${welcome}${celebra}
        <div class="card-head" style="margin:0"><h2>${monthLabel(k)}</h2><span style="display:flex;gap:6px">
          <button class="icon-btn" data-act="gm" data-d="-1" aria-label="Mes anterior" ${k<=minK?'disabled':''}>${ico('left')}</button>
          <button class="icon-btn" data-act="gm" data-d="1" aria-label="Mes siguiente" ${k>=cur?'disabled':''}>${ico('right')}</button></span></div>
@@ -980,7 +1051,7 @@ function render(){
   if(!joined)main.innerHTML=viewWelcome();
   else main.innerHTML=({hoy:viewHoy,metas:viewMetas,progreso:viewProgreso,metricas:viewInbody,grupo:viewGrupo,admin:viewAdmin}[state.tab]||viewHoy)();
   const sh=document.getElementById('sheet');
-  if(joined&&state.sheet){sh.innerHTML=state.sheet==='install'?viewInstall():viewSheet();sh.hidden=false}else{sh.hidden=true;sh.innerHTML=''}
+  if(joined&&state.sheet){sh.innerHTML=state.sheet==='install'?viewInstall():(typeof state.sheet==='string'&&state.sheet.startsWith('person:'))?viewPerson(state.sheet.slice(7)):viewSheet();sh.hidden=false}else{sh.hidden=true;sh.innerHTML=''}
 }
 
 /* ---------- acciones ---------- */
@@ -1014,6 +1085,12 @@ document.addEventListener('click',e=>{
   switch(a){
    case 'tab':state.tab=b.dataset.tab;state.confirm=null;try{history.replaceState(null,'','#'+state.tab)}catch(_){}render();window.scrollTo(0,0);break;
    case 'profile':state.sheet=true;render();break;
+   case 'person':{const id=b.dataset.id;if(!people[id])return;state.sheet=id===uid?true:'person:'+id;render();break}
+   case 'thread':{const k=b.dataset.k;state.openThread=state.openThread===k?null:k;render();if(state.openThread){const el=document.getElementById('cm-'+k);if(el)el.focus({preventScroll:true})}break}
+   case 'react':{const k=b.dataset.k,em=b.dataset.e;if(!REACTS.includes(em))return;const c=cheers[k]||(cheers[k]={});const r=c.reactions||(c.reactions={});const ids=Array.isArray(r[em])?r[em]:[];const mine=ids.includes(uid);
+     r[em]=mine?ids.filter(x=>x!==uid):[...ids,uid];render();cheerWrite(k,{reactions:{[em]:mine?arrayRemove(uid):arrayUnion(uid)}});break}
+   case 'delcm':{const k=b.dataset.k,id=b.dataset.id;const c=cheers[k];if(!c||!Array.isArray(c.comments))return;const it=c.comments.find(x=>x&&x.id===id);if(!it||(it.uid!==uid&&!isOwnerV))return;
+     c.comments=c.comments.filter(x=>x!==it);render();cheerWrite(k,{comments:arrayRemove(it)});break}
    case 'install':{if(deferredInstall){const ev=deferredInstall;deferredInstall=null;state.sheet=false;try{ev.prompt();ev.userChoice.then(c=>{if(c&&c.outcome==='accepted')toast('¡Listo! Constantes ya está en tu pantalla de inicio.',6000)}).catch(()=>{})}catch(_){state.sheet='install'}render()}else{state.sheet='install';render()}break}
    case 'installoff':{try{localStorage.setItem('cst-install-off','1')}catch(_){}toast('Puedes agregarla después desde tu perfil.');render();break}
    case 'close':state.sheet=false;render();break;
@@ -1032,7 +1109,7 @@ document.addEventListener('click',e=>{
    case 'celemoji':state.celEmoji=b.dataset.e;document.querySelectorAll('[data-act="celemoji"]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));return;
    case 'delcel':{if(!isOwnerV)return;const id=b.dataset.id;if(state.confirm==='cel:'+id){adminDoc.celebrations=adminDoc.celebrations.filter(c=>c.id!==id);state.confirm=null;adminSaver.save();toast('Celebración borrada.');render()}else{state.confirm='cel:'+id;render()}break}
    case 'hide':{if(!isOwnerV)return;const id=b.dataset.id;const h=new Set(adminDoc.hidden||[]);h.has(id)?h.delete(id):h.add(id);adminDoc.hidden=[...h];adminSaver.save();render();break}
-   case 'approve':{if(!isOwnerV)return;const id=b.dataset.id;if(!people[id])return;adminDoc.approved=[...new Set([...(adminDoc.approved||[]),id])];adminDoc.roster={...(adminDoc.roster||{}),[id]:people[id].name};adminSaver.save();toast(`${people[id].name} ya está en el reto.`);render();break}
+   case 'approve':{if(!isOwnerV)return;const id=b.dataset.id;if(!people[id])return;adminDoc.approved=[...new Set([...(adminDoc.approved||[]),id])];adminDoc.roster={...(adminDoc.roster||{}),[id]:people[id].name};adminDoc.approvedAt={...(adminDoc.approvedAt||{}),[id]:T0};adminDoc.approvedTs={...(adminDoc.approvedTs||{}),[id]:Date.now()};adminSaver.save();toast(`${people[id].name} ya está en el reto. El grupo verá su bienvenida.`);render();break}
    case 'reject':{if(!isOwnerV)return;const id=b.dataset.id;if(state.confirm==='rej:'+id){state.confirm=null;db.doc('people/'+id).delete().then(()=>toast('Registro rechazado.')).catch(()=>toast('No se pudo rechazar. Intenta de nuevo.'));render()}else{state.confirm='rej:'+id;render()}break}
    case 'copylink':{const link=inviteLink();const fb=()=>{const el=document.getElementById('inv-link');if(el){const r=document.createRange();r.selectNodeContents(el);const sel=getSelection();sel.removeAllRanges();sel.addRange(r)}toast('Selecciona el link y cópialo.')};
      try{navigator.clipboard.writeText(link).then(()=>toast('Link copiado. Compártelo por WhatsApp o donde quieras.'),fb)}catch(_){fb()}break}
@@ -1077,6 +1154,11 @@ document.addEventListener('submit',e=>{
     else toast(`Listo, ${name}. Tu registro quedó en revisión.`,6000);render();
   }
   if(f.id==='goal-form'){const ng=state.newGoal;const tEl=document.getElementById('ng-target');if(addGoal(document.getElementById('ng-name').value,ng.freq,tEl?tEl.value:1,'target')){state.newGoal={name:'',freq:ng.freq,target:ng.target,icon:'target'};render()}}
+  if(f.classList&&f.classList.contains('cm-form')){
+    const k=f.dataset.k,inp=f.querySelector('input');const text=(inp&&inp.value||'').trim().slice(0,280);if(!text)return;
+    const item={id:uid8(),uid,text,at:Date.now()};const c=cheers[k]||(cheers[k]={});c.comments=[...(Array.isArray(c.comments)?c.comments:[]),item];
+    if(inp)inp.value='';inp&&inp.blur();render();cheerWrite(k,{comments:arrayUnion(item)});return;
+  }
   if(f.id==='login-form'){
     const email=document.getElementById('lg-email').value.trim(),pw=document.getElementById('lg-pass').value;state.loginEmail=email;
     if(!EMAIL_RE.test(email)){toast('Escribe un correo válido, por ejemplo nombre@correo.com.');return}
@@ -1104,7 +1186,8 @@ document.addEventListener('submit',e=>{
     inbody.entries.push(entry);saveInbody();toast('Registro guardado.');
   }
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.sheet){state.sheet=false;render()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.sheet){state.sheet=false;render();return}
+  const t=e.target;if((e.key==='Enter'||e.key===' ')&&t&&t.getAttribute&&t.getAttribute('role')==='button'&&t.dataset.act){e.preventDefault();t.click()}});
 document.getElementById('sheet').addEventListener('click',e=>{if(e.target.id==='sheet'){state.sheet=false;render()}});
 
 /* ---------- arranque (Firebase) ---------- */
@@ -1121,6 +1204,7 @@ function makeDb(fs){
   return{
     doc:path=>({
       set:d=>setDoc(fdoc(fs,path),d).catch(e=>{throw{code:mapCode(e&&e.code)}}),
+      merge:d=>setDoc(fdoc(fs,path),d,{merge:true}).catch(e=>{throw{code:mapCode(e&&e.code)}}),
       delete:()=>deleteDoc(fdoc(fs,path)),
       onSnapshot:(next,err)=>onSnapshot(fdoc(fs,path),s=>next({exists:s.exists(),data:()=>s.data()}),e=>err&&err({code:mapCode(e&&e.code)}))
     }),
@@ -1129,7 +1213,7 @@ function makeDb(fs){
     })
   };
 }
-let subs=[],peopleUnsub=null,peopleMode=null,gotAdmin=false,gotPeople=false;
+let subs=[],peopleUnsub=null,peopleMode=null,gotAdmin=false,gotPeople=false,cheersUnsub=null;
 const typing=()=>document.activeElement&&['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName);
 function maybeReady(){if(gotAdmin&&gotPeople&&status==='loading'){status='ready';render()}else if(status==='ready'&&!typing())render()}
 function syncRoster(){
@@ -1149,12 +1233,13 @@ function subscribePeople(){
   const mode=isApproved()?'all':'self';
   if(mode===peopleMode)return;
   if(peopleUnsub)peopleUnsub();peopleMode=mode;
+  if(mode==='all'&&!cheersUnsub)cheersUnsub=db.collection('cheers').onSnapshot(snap=>{const n={};for(const d of snap.docs){const v=d.data();if(v)n[d.id]=v}cheers=n;if(status==='ready'&&!typing())render()},()=>{});
   if(mode==='all')peopleUnsub=db.collection('people').onSnapshot(snap=>{const n={};for(const d of snap.docs){const v=d.data();if(v&&typeof v.name==='string')n[d.id]=v}onPeople(n)},
     ()=>{peopleMode=null;if(peopleUnsub)peopleUnsub();peopleUnsub=db.doc('people/'+uid).onSnapshot(s=>{const n={};if(s.exists){const v=s.data();if(v&&typeof v.name==='string')n[uid]=v}onPeople(n)},()=>{gotPeople=true;maybeReady()})});
   else peopleUnsub=db.doc('people/'+uid).onSnapshot(s=>{const n={};if(s.exists){const v=s.data();if(v&&typeof v.name==='string')n[uid]=v}onPeople(n)},()=>{gotPeople=true;maybeReady()});
 }
 function resetSession(){
-  subs.forEach(u=>{try{u()}catch(_){}});subs=[];if(peopleUnsub){try{peopleUnsub()}catch(_){}}peopleUnsub=null;peopleMode=null;
+  subs.forEach(u=>{try{u()}catch(_){}});subs=[];if(cheersUnsub){try{cheersUnsub()}catch(_){}}cheersUnsub=null;cheers={};state.openThread=null;if(peopleUnsub){try{peopleUnsub()}catch(_){}}peopleUnsub=null;peopleMode=null;
   gotAdmin=false;gotPeople=false;people={};myDoc=null;inbody={entries:[]};adminDoc=ADMIN_DEFAULT();isOwnerV=false;TABS=[...BASE_TABS];state.sheet=false;
 }
 function init(){
@@ -1174,7 +1259,7 @@ function init(){
       if(!adminSaver.busy()){
         const v=s.exists?s.data():{};
         adminDoc={celebrations:Array.isArray(v.celebrations)?JSON.parse(JSON.stringify(v.celebrations)):[],hidden:Array.isArray(v.hidden)?[...v.hidden]:[],ownerId:v.ownerId||null,
-          sponsors:v.sponsors&&typeof v.sponsors==='object'?{...v.sponsors}:{},approved:Array.isArray(v.approved)?[...v.approved]:[],roster:v.roster&&typeof v.roster==='object'?{...v.roster}:{}};
+          sponsors:v.sponsors&&typeof v.sponsors==='object'?{...v.sponsors}:{},approved:Array.isArray(v.approved)?[...v.approved]:[],roster:v.roster&&typeof v.roster==='object'?{...v.roster}:{},approvedAt:v.approvedAt&&typeof v.approvedAt==='object'?{...v.approvedAt}:{},approvedTs:v.approvedTs&&typeof v.approvedTs==='object'?{...v.approvedTs}:{}};
         if(isOwnerV&&adminDoc.ownerId!==uid){adminDoc.ownerId=uid;adminSaver.save()}
       }
       gotAdmin=true;subscribePeople();if(isOwnerV&&gotPeople)syncRoster();maybeReady();
