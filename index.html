@@ -271,6 +271,8 @@ const FIREBASE_CONFIG={
 };
 /* Correo de la persona que administra el reto (debe entrar con Google). */
 const ADMIN_EMAIL="pauw@somosdoblev.com";
+/* Nombre de la base de datos de Firestore (la tuya se llama "constantes"). */
+const FIRESTORE_DB="constantes";
 /* ===================================================================== */
 
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -473,6 +475,7 @@ const ibSaver=makeSaver(()=>db.doc('private/'+uid),()=>inbody);
 const adminSaver=makeSaver(()=>db.doc('admin/settings'),()=>adminDoc);
 function onWriteError(code){
   if(code==='invalid_argument'){toast('No se pudo guardar por permisos. Si te acabas de registrar, espera a que te aprueben.',6000)}
+  else if(code==='not_found')toast('No se encontró la base de datos de Firestore. Revisa el nombre en FIRESTORE_DB.',7000);
   else if(code==='quota_exceeded')toast('Se llenó el espacio de la app. Borra registros viejos de tus métricas para seguir guardando.');
   else toast('No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
   render();
@@ -1066,7 +1069,7 @@ function authErr(e){const c=e&&e.code||'';const m={'auth/invalid-credential':'Co
   'auth/operation-not-allowed':'Este método de acceso no está activado en Firebase (Authentication → Sign-in method).',
   'auth/too-many-requests':'Demasiados intentos. Espera unos minutos.','auth/network-request-failed':'Sin conexión. Revisa tu internet.'};
   toast(m[c]||'No se pudo iniciar sesión. Intenta de nuevo.',6500)}
-const mapCode=c=>c==='permission-denied'?'invalid_argument':c==='resource-exhausted'?'quota_exceeded':c==='unavailable'?'unavailable':'unknown';
+const mapCode=c=>c==='permission-denied'?'invalid_argument':c==='not-found'?'not_found':c==='resource-exhausted'?'quota_exceeded':c==='unavailable'?'unavailable':'unknown';
 function makeDb(fs){
   return{
     doc:path=>({
@@ -1111,7 +1114,7 @@ function init(){
   render();
   if(!FIREBASE_CONFIG.apiKey||FIREBASE_CONFIG.apiKey.startsWith('PEGA')){status='offline';render();return}
   let app;try{app=initializeApp(FIREBASE_CONFIG)}catch(_){status='offline';render();return}
-  auth=getAuth(app);db=makeDb(getFirestore(app));
+  auth=getAuth(app);db=makeDb(getFirestore(app,FIRESTORE_DB));
   onAuthStateChanged(auth,u=>{
     resetSession();
     if(!u){uid=null;userEmail='';status='signedout';render();return}
