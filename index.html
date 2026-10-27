@@ -398,8 +398,8 @@ const SUGERIDAS=[
  {name:'Cardio zona 2',freq:'weekly',target:3,icon:'pulse'},
  {name:'Leer 20 minutos',freq:'daily',target:1,icon:'book'},
  {name:'Estirar',freq:'weekly',target:3,icon:'stretch'},
- {name:'Sin refresco',freq:'weekly',target:6,icon:'nosoda',note:'Regla 90/10: 6 días sin refresco y 1 día libre a la semana. La meta es el equilibrio, no la perfección.'},
- {name:'Sin azúcar',freq:'weekly',target:6,icon:'nosugar',note:'Regla 90/10: 6 días sin dulces, pan ni azúcar añadida, y 1 día libre para un antojo. Comes sano casi siempre y disfrutas sin culpa.'}
+ {name:'Sin refresco',freq:'weekly',target:6,icon:'nosoda',note:'Regla 90/10: 6 días sin refresco y 1 día libre.'},
+ {name:'Sin azúcar',freq:'weekly',target:6,icon:'nosugar',note:'Regla 90/10: 6 días sin azúcar añadida y 1 día libre.'}
 ];
 const METRICS=[
  {k:'peso',label:'Peso',unit:'kg',dec:1,min:20,max:300},
@@ -827,7 +827,7 @@ function viewMetas(){
   const list=active.length?active.map(g=>{
     const confirm=state.confirm==='archive:'+g.id;
     return `<div class="goal" style="cursor:default"><span class="tile c-${g.color}">${ico(g.icon)}</span>
-      <span class="g-txt"><span class="g-name">${esc(g.name)}</span><br><span class="g-sub">${esc(freqText(g))} · desde el ${fmtShort(g.created)}</span>${g.note?`<br><span class="g-sub">${esc(g.note)}</span>`:''}</span>
+      <span class="g-txt"><span class="g-name">${esc(g.name)}</span><br><span class="g-sub">${esc(freqText(g))} · desde el ${fmtShort(g.created)}</span>${g.note?`<br><span class="chip" style="margin-top:4px">${/90\/10/.test(g.note)?'Regla 90/10 · 1 día libre':esc(g.note.length>40?g.note.slice(0,40)+'…':g.note)}</span>`:''}</span>
       ${g.freq!=='daily'?`<span style="display:flex;gap:6px;align-items:center"><button class="icon-btn" data-act="tgt" data-goal="${esc(g.id)}" data-d="-1" aria-label="Menos días" ${readOnly?'disabled':''}>${ico('minus')}</button><b class="num" style="min-width:20px;text-align:center">${g.target}</b><button class="icon-btn" data-act="tgt" data-goal="${esc(g.id)}" data-d="1" aria-label="Más días" ${readOnly?'disabled':''}>${ico('plus')}</button></span>`:''}
       <span style="display:flex;gap:6px;flex:none">${state.confirm==='delgoal:'+g.id?'':`<button class="${confirm?'btn btn-sm':'icon-btn'}" data-act="archive" data-goal="${esc(g.id)}" aria-label="Archivar meta" title="Archivar" ${readOnly?'disabled':''}>${confirm?'Archivar':ico('archive')}</button>`}
       ${confirm?'':delGoalBtn(g)}</span></div>`}).join('')
