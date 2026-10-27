@@ -1168,12 +1168,12 @@ function viewGrupo(){
        ${cards}
      </section>
      <aside class="stack" style="gap:16px">
-       <div class="card"><div class="card-head"><h3>Mayor avance vs. ${mesP}</h3><span aria-hidden="true">📈</span></div><div class="stack" style="gap:12px">${impHtml}</div>
-         ${isCur?`<p class="muted" style="font-size:12px;margin-top:12px">Compara el ritmo de este mes con el resultado final de ${mesP}.</p>`:''}</div>
-       <div class="card pastel c-olive"><div class="card-head"><h3>Más constantes</h3><span aria-hidden="true">🏅</span></div><div class="stack" style="gap:12px">${consHtml}</div>
-         <p class="muted" style="font-size:12px;margin-top:12px">Cuentan los meses completos con 80% o más de avance y el promedio mensual, a partir de 2 meses en el reto.</p></div>
-       <div class="card"><div class="card-head"><h3>Esta semana en el grupo</h3></div><div class="stack" style="gap:12px">${feedHtml}</div></div>
-       <div class="card"><div class="card-head"><h3>Podios anteriores</h3>${ico('trophy')}</div><div class="stack" style="gap:16px">${pastHtml}</div></div>
+       ${imp.length?`<div class="card"><div class="card-head"><h3>Mayor avance vs. ${mesP}</h3><span aria-hidden="true">📈</span></div><div class="stack" style="gap:12px">${impHtml}</div>
+         ${isCur?`<p class="muted" style="font-size:12px;margin-top:12px">Compara el ritmo de este mes con el resultado final de ${mesP}.</p>`:''}</div>`:''}
+       ${cons.length?`<div class="card pastel c-olive"><div class="card-head"><h3>Más constantes</h3><span aria-hidden="true">🏅</span></div><div class="stack" style="gap:12px">${consHtml}</div>
+         <p class="muted" style="font-size:12px;margin-top:12px">Cuentan los meses completos con 80% o más de avance y el promedio mensual, a partir de 2 meses en el reto.</p></div>`:''}
+       ${evs.length?`<div class="card"><div class="card-head"><h3>Esta semana en el grupo</h3></div><div class="stack" style="gap:12px">${feedHtml}</div></div>`:''}
+       ${past.length?`<div class="card"><div class="card-head"><h3>Podios anteriores</h3>${ico('trophy')}</div><div class="stack" style="gap:16px">${pastHtml}</div></div>`:''}
        ${inviteCard()}
      </aside></div>`;
 }
