@@ -441,7 +441,7 @@ const METRICS=[
  {k:'masaGrasa',label:'Masa grasa corporal',short:'Masa grasa',unit:'kg',dec:1,min:1,max:150},
  {k:'visceral',label:'Grasa visceral',unit:'nivel',dec:0,min:1,max:30}
 ];
-const freqText=g=>(hasQty(g)?`${fmtQty(g.qty,g)} ${g.unit||''} · `:'')+(g.freq==='daily'?'Diaria':g.freq==='weekly'?`${g.target} días por semana`:`${g.target} días al mes`);
+const freqText=g=>(hasQty(g)?`${fmtQty(g.qty,g)} ${g.unit||''} · `:'')+(g.freq==='daily'?'Diaria':`${g.target} ${Number(g.target)===1?'día':'días'} ${g.freq==='weekly'?'por semana':'al mes'}`);
 
 /* ---------- estado ---------- */
 let db=null,uid=null,auth=null,userEmail='';
@@ -679,13 +679,13 @@ function viewNotify(id){
 
 /* ---------- noticias automáticas en el chat ---------- */
 let chatLoaded=false,backfilled=false;
-const freqPlain=g=>g.freq==='daily'?'diaria':g.freq==='weekly'?`${g.target} días por semana`:`${g.target} días al mes`;
+const freqPlain=g=>g.freq==='daily'?'diaria':`${g.target} ${Number(g.target)===1?'día':'días'} ${g.freq==='weekly'?'por semana':'al mes'}`;
 const goalLabel=g=>`${g.name} · ${freqPlain(g)}`;
 function postNews(id,kind,text,at){
   if(!db||!uid||!isApproved()||chat.some(m=>m.id===id))return;
   const m={uid,text:String(text).slice(0,500),at:at||Date.now(),kind};
   chat=[...chat,{id,...m}].sort((a,b)=>(a.at||0)-(b.at||0));
-  db.doc('chat/'+id).set(m).catch(()=>{});
+  db.doc('chat/'+id).set(m).catch(()=>{chat=chat.filter(x=>x.id!==id);backfilled=false});
 }
 function newsAch(d,beforeA){
   for(const a of achievements(myDoc,d)){
@@ -694,15 +694,25 @@ function newsAch(d,beforeA){
     postNews(`ach_${uid}_${a.g.id}_${a.level}_${key}`,a.level==='month'?'achm':'ach',a.txt);
   }
 }
+/* Publica en el chat lo que pasó en los últimos 7 días y aún no está ahí
+   (metas nuevas, logros y mejoras propias; la admin además publica las bienvenidas). */
 function tryBackfill(){
-  if(backfilled||!chatLoaded||!myDoc||!isMember())return;backfilled=true;
-  for(const g of myDoc.goals||[])if(!g.archived&&g.created>=addDays(T0,-6)&&!chat.some(m=>m.id==='goal_'+g.id))
+  if(backfilled||!chatLoaded||!gotAdmin||!gotPeople||!myDoc||!isMember())return;backfilled=true;
+  const from=addDays(T0,-6),when=d=>Math.min(Date.now()-60000,Date.parse(d+'T23:00:00Z'));
+  for(const g of myDoc.goals||[])if(!g.archived&&g.created>=from)
     postNews('goal_'+g.id,'goal',goalLabel(g),g.createdAt||Date.parse(g.created+'T18:00:00Z'));
+  eachDay(from,T0,d=>{for(const a of achievements(myDoc,d)){const key=a.level==='month'?monthKey(d):weekStart(d);
+    postNews(`ach_${uid}_${a.g.id}_${a.level}_${key}`,a.level==='month'?'achm':'ach',a.txt,when(d))}});
+  const w=metricWin(uid);if(w&&w.date>=from)postNews('metric_'+uid+'_'+w.date,'metric',w.items.join(' y '),when(w.date));
+  if(isOwnerV)for(const id of adminDoc.approved||[]){const ts=Number((adminDoc.approvedTs||{})[id])||0;
+    const day=(adminDoc.approvedAt||{})[id];if(people[id]&&(ts?Date.now()-ts<7*864e5:day&&day>=from))postNews('welcome_'+id,'welcome',id,ts||when(day))}
 }
 const NEWS_IC={goal:'🎯',ach:'🏆',achm:'🏆',metric:'📈',welcome:'👋',cel:'🎉'};
 function newsHtml(group){
   const m=group[0],who=`<b>${esc(nameOf(m.uid)||'Alguien')}</b>`;let t;
-  if(m.kind==='goal')t=`${who} se propuso ${group.length===1?'una nueva meta':group.length+' metas nuevas'}: ${group.map(x=>`<b>${esc(x.text)}</b>`).join(', ')}`;
+  const dayOf=ms=>new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(ms));
+  const first=m.kind==='goal'&&people[m.uid]&&dayOf(m.at||0)===people[m.uid].joined;
+  if(m.kind==='goal')t=`${who} se propuso ${first?(group.length===1?'su primera meta':'sus primeras metas'):group.length===1?'una nueva meta':group.length+' metas nuevas'}: ${group.map(x=>`<b>${esc(x.text)}</b>`).join(', ')}`;
   else if(m.kind==='ach')t=`¡${who} cumplió su meta de la semana! <b>${esc(m.text)}</b>`;
   else if(m.kind==='achm')t=`<span class="chip">Meta del mes</span> ¡${who} cumplió <b>${esc(m.text)}</b>!`;
   else if(m.kind==='metric')t=`${who} ${esc(m.text)} en su último registro`;
@@ -715,7 +725,7 @@ function newsHtml(group){
   const target=m.kind==='welcome'?m.text:m.uid;
   return `<div class="news"><span class="news-ic" aria-hidden="true">${NEWS_IC[m.kind]||'✨'}</span>${avatar(target,32)}<div class="news-b"><p>${t}</p>
     <div class="reacts">${bar}${target!==uid?`<button class="react" data-act="reply" data-id="${esc(target)}">Responder</button>`:''}</div>
-    <span class="msg-m">${chatTime(group[group.length-1].at||0)}${m.uid===uid||isOwnerV?` · <button class="link" data-act="delmsg" data-id="${esc(m.id)}">Quitar</button>`:''}</span></div></div>`;
+    <span class="msg-m">${chatTime(group[group.length-1].at||0)}${!m.virtual&&(m.uid===uid||isOwnerV)?` · <button class="link" data-act="delmsg" data-id="${esc(m.id)}">Quitar</button>`:''}</span></div></div>`;
 }
 function newsPlain(m){const n=nameOf(m.uid)||'Alguien';
   return m.kind==='goal'?`🎯 ${n} se propuso: ${m.text}`:m.kind==='ach'||m.kind==='achm'?`🏆 ${n} cumplió ${m.text}`:m.kind==='metric'?`📈 ${n} ${m.text}`:m.kind==='welcome'?`👋 Bienvenida a ${nameOf(m.text)||'alguien nuevo'}`:m.kind==='cel'?`🎉 ${m.text}`:m.text}
@@ -723,12 +733,29 @@ function newsPlain(m){const n=nameOf(m.uid)||'Alguien';
 /* ---------- chat del grupo ---------- */
 const CHAT_SEEN=()=>'cst-chat-'+uid;
 function chatSeenAt(){try{return Number(localStorage.getItem(CHAT_SEEN()))||0}catch(_){return 0}}
-function markChatSeen(){const last=chat.length?chat[chat.length-1].at||0:0;try{if(last>chatSeenAt())localStorage.setItem(CHAT_SEEN(),String(last))}catch(_){}}
-const unreadChat=()=>{const t=chatSeenAt();return chat.filter(m=>m.uid!==uid&&(m.at||0)>t).length};
+/* El chat muestra los mensajes guardados más las novedades de los últimos 7 días de TODO el grupo
+   (metas nuevas, logros, mejoras, bienvenidas y celebraciones), aunque esa persona no haya abierto la app. */
+function chatItems(){
+  const out=[...chat],have=new Set(chat.map(m=>m.id)),from=addDays(T0,-6),owner=adminDoc.ownerId||uid;
+  const add=(id,who,kind,text,at)=>{if(have.has(id))return;have.add(id);out.push({id,uid:who,kind,text,at,virtual:true})};
+  const at=d=>Math.min(Date.now()-60000,Date.parse(d+'T13:00:00Z'));
+  for(const id of visibleIds()){const q=people[id];if(!q)continue;
+    for(const g of q.goals||[])if(!g.archived&&g.created>=from)add('goal_'+g.id,id,'goal',goalLabel(g),g.createdAt||at(g.created));
+    eachDay(from,T0,d=>{for(const a of achievements(q,d)){const key=a.level==='month'?monthKey(d):weekStart(d);add(`ach_${id}_${a.g.id}_${a.level}_${key}`,id,a.level==='month'?'achm':'ach',a.txt,at(d))}});
+    const w=metricWin(id);if(w&&w.date>=from)add('metric_'+id+'_'+w.date,id,'metric',w.items.join(' y '),at(w.date));
+    if(id!==adminDoc.ownerId){const ts=Number((adminDoc.approvedTs||{})[id])||0,day=(adminDoc.approvedAt||{})[id];
+      if(ts?Date.now()-ts<7*864e5:day&&day>=from)add('welcome_'+id,owner,'welcome',id,ts||at(day))}
+  }
+  for(const c of adminDoc.celebrations||[])if(c&&c.from>=from&&c.from<=T0)add('cel_'+c.id,owner,'cel',c.msg?c.title+' '+c.msg:c.title,at(c.from));
+  return out.sort((a,b)=>(a.at||0)-(b.at||0));
+}
+function markChatSeen(){const items=chatItems();const last=items.length?items[items.length-1].at||0:0;try{if(last>chatSeenAt())localStorage.setItem(CHAT_SEEN(),String(last))}catch(_){}}
+const unreadChat=()=>{const t=chatSeenAt();return chatItems().filter(m=>m.uid!==uid&&(m.at||0)>t).length};
 function chatTime(ms){const d=new Date(ms);const day=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
   const hm=new Intl.DateTimeFormat('es-MX',{timeZone:TZ,hour:'numeric',minute:'2-digit'}).format(d);
   return day===T0?hm:day===addDays(T0,-1)?'ayer '+hm:fmtShort(day)+' '+hm}
 function chatList(){
+  const chat=chatItems();
   if(!chat.length)return '<p class="muted" style="text-align:center;padding:24px 8px">Aún no hay mensajes. Aquí aparecerán las metas nuevas y los logros del grupo, y pueden platicar sobre ellos.</p>';
   let out='',prev=null;
   for(let i=0;i<chat.length;i++){const m=chat[i];
@@ -752,7 +779,7 @@ function viewChat(){
     <form id="chat-form" class="cm-form"><input id="chat-input" class="input" maxlength="500" placeholder="Escribe un mensaje…" autocomplete="off"><button class="btn btn-sm" type="submit">Enviar</button></form></div>`;
 }
 function chatCard(){
-  const n=unreadChat(),last=chat.slice(-2);
+  const n=unreadChat(),last=chatItems().slice(-2);
   return `<button class="card chat-card" data-act="chat"><div class="card-head" style="margin-bottom:${last.length?10:0}px"><h3 style="display:flex;align-items:center;gap:8px">${ico('chat')}Chat del grupo</h3>${n?`<span class="chip" style="background:#E5484D;color:#fff">${n} ${n===1?'nuevo':'nuevos'}</span>`:'<span class="muted" style="font-size:13px">Abrir →</span>'}</div>
     ${last.length?`<div class="stack" style="gap:6px">${last.map(m=>`<div style="display:flex;gap:8px;align-items:center;font-size:14px;min-width:0">${avatar(m.uid,24)}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.kind?esc(newsPlain(m)):`<b>${m.uid===uid?'Tú':esc(nameOf(m.uid)||'Alguien')}:</b> ${esc(m.text)}`}</span></div>`).join('')}</div>`
       :'<p class="muted" style="font-size:14px;margin-top:8px">Aquí verás las novedades del grupo y podrán platicar.</p>'}</button>`;
@@ -1336,7 +1363,7 @@ function viewGrupo(){
   const fresh=visibleIds().filter(id=>id!==adminDoc.ownerId&&(tsOf(id)?Date.now()-tsOf(id)<864e5:since(id)===T0)).sort((a,b)=>tsOf(b)-tsOf(a));
   const welcome=isCur&&fresh.length?`<div class="card pastel c-lav win"><span class="trophy" aria-hidden="true">👋</span><div style="min-width:0;flex:1"><span class="eyebrow">${fresh.length===1?'Nueva persona en el reto':'Nuevas personas en el reto'}</span>
     <div class="stack" style="gap:12px;margin-top:8px">${fresh.map(id=>{const sp=sponsorOf(id);return `<div class="event"><div style="display:flex;align-items:center;gap:12px">${avatar(id,44)}<div style="min-width:0"><h2 class="win-title" style="font-size:clamp(20px,2.6vw,24px)">¡Démosle la bienvenida a ${esc(people[id].name)}!</h2>
-      <p style="font-size:14px;margin-top:2px">${sp?`Llegó por invitación de ${esc(nameOf(sp))}. `:''}Se unió ${tsOf(id)?ago(tsOf(id)):'hoy'}.</p></div></div></div>`}).join('')}</div></div></div>`:'';
+      <p style="font-size:14px;margin-top:2px">${sp?`Llegó por invitación de ${esc(nameOf(sp))}. `:''}Se unió ${tsOf(id)?ago(tsOf(id)):'hoy'}.</p>${id!==uid?`<button class="btn btn-sm" data-act="greet" data-id="${esc(id)}" style="margin-top:8px">${ico('chat')}Saludar en el chat</button>`:''}</div></div></div>`}).join('')}</div></div></div>`:'';
   const minK=firstK;
   return topBar('El grupo',`${ids.length} ${ids.length===1?'persona':'personas'} en el reto de ${mesK}. Se compara el % de avance de cada quien contra sus propias metas.`)+banners()+
    `<div class="grid g-main">
@@ -1352,7 +1379,6 @@ function viewGrupo(){
          ${isCur?`<p class="muted" style="font-size:12px;margin-top:12px">Compara el ritmo de este mes con el resultado final de ${mesP}.</p>`:''}</div>`:''}
        ${cons.length?`<div class="card pastel c-olive"><div class="card-head"><h3>Más constantes</h3><span aria-hidden="true">🏅</span></div><div class="stack" style="gap:12px">${consHtml}</div>
          <p class="muted" style="font-size:12px;margin-top:12px">Cuentan los meses completos con 80% o más de avance y el promedio mensual, a partir de 2 meses en el reto.</p></div>`:''}
-       ${evs.length?`<div class="card"><div class="card-head"><h3>Esta semana en el grupo</h3></div><div class="stack" style="gap:12px">${feedHtml}</div></div>`:''}
        ${past.length?`<div class="card"><div class="card-head"><h3>Podios anteriores</h3>${ico('trophy')}</div><div class="stack" style="gap:16px">${pastHtml}</div></div>`:''}
        ${inviteCard()}
      </aside></div>`;
@@ -1457,6 +1483,8 @@ document.addEventListener('click',e=>{
    case 'qtyclear':{const g=myDoc.goals.find(x=>x.id===b.dataset.goal);if(g){setAmount(g,state.day,null);toast('Registro borrado.')}break}
    case 'gqty':{if(readOnly)return;state.sheet='gqty:'+b.dataset.goal;render();break}
    case 'gqtyoff':{const g=myDoc.goals.find(x=>x.id===b.dataset.goal);if(!g)return;delete g.qty;delete g.unit;state.sheet=false;saveMe();toast('Listo, esta meta vuelve a marcarse solo como cumplida o no.');break}
+   case 'greet':{const id=b.dataset.id,n=(nameOf(id)||'').split(' ')[0];state.sheet=false;state.tab='chat';try{history.replaceState(null,'','#chat')}catch(_){}render();scrollChat();
+     const i=document.getElementById('chat-input');if(i){i.value=`¡Te damos la bienvenida${n?', @'+n:''}! 👋 `;i.focus();try{i.setSelectionRange(i.value.length,i.value.length)}catch(_){}}break}
    case 'reply':{const i=document.getElementById('chat-input');if(!i)return;const n=nameOf(b.dataset.id);i.value=(n?'@'+n.split(' ')[0]+' ':'')+i.value.replace(/^@\S+\s/,'');i.focus();break}
    case 'chat':{state.sheet=false;state.tab='chat';try{history.replaceState(null,'','#chat')}catch(_){}render();scrollChat();break}
    case 'delmsg':{const id=b.dataset.id;const m=chat.find(x=>x.id===id);if(!m||(m.uid!==uid&&!isOwnerV))return;chat=chat.filter(x=>x!==m);onChat();db.doc('chat/'+id).delete().catch(()=>toast('No se pudo borrar el mensaje.'));break}
@@ -1640,7 +1668,7 @@ function init(){
           sponsors:v.sponsors&&typeof v.sponsors==='object'?{...v.sponsors}:{},approved:Array.isArray(v.approved)?[...v.approved]:[],roster:v.roster&&typeof v.roster==='object'?{...v.roster}:{},approvedAt:v.approvedAt&&typeof v.approvedAt==='object'?{...v.approvedAt}:{},approvedTs:v.approvedTs&&typeof v.approvedTs==='object'?{...v.approvedTs}:{}};
         if(isOwnerV&&adminDoc.ownerId!==uid){adminDoc.ownerId=uid;adminSaver.save()}
       }
-      gotAdmin=true;subscribePeople();if(isOwnerV&&gotPeople)syncRoster();maybeReady();
+      gotAdmin=true;subscribePeople();tryBackfill();if(isOwnerV&&gotPeople)syncRoster();maybeReady();
     },()=>{gotAdmin=true;subscribePeople();maybeReady()}));
     subs.push(db.doc('contact/'+uid).onSnapshot(s=>{const v=s.exists?s.data():null;myContact={phone:v&&typeof v.phone==='string'?v.phone:''};if(status==='ready'&&!typing())render()},()=>{}));
     if(isOwnerV)subs.push(db.collection('contact').onSnapshot(snap=>{const n={};for(const d of snap.docs){const v=d.data();if(v&&typeof v.phone==='string')n[d.id]={phone:v.phone}}allContacts=n},()=>{}));
