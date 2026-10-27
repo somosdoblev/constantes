@@ -191,6 +191,11 @@ input,select{font:inherit;color:var(--ink)}
 .event{padding-top:10px;border-top:1px solid var(--line)}
 .pastel .event{border-top-color:rgba(30,28,25,.12)}
 .event:first-child{border-top:0;padding-top:0}
+.rank.person{background:var(--surface-2);border-color:transparent;color:var(--ink)}
+.rank.person .chip{background:var(--surface);color:var(--ink)}
+.rank.person .ring circle:first-child{stroke:var(--line)}
+.rank.person .ring circle:last-child{stroke:var(--ink)}
+.rank.person .ring text{fill:var(--ink)}
 .rank{cursor:pointer;text-align:left;width:100%;color:var(--on-pastel)}
 .rank:hover{filter:brightness(1.02)}
 .person-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border-radius:12px}
@@ -308,6 +313,16 @@ th{font-size:12px;color:var(--muted);font-weight:600}
 @media (min-width:821px){.toast{bottom:28px}}
 .banner{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:18px;background:var(--surface-2);font-size:14px}
 .banner .ic{color:var(--warn);margin-top:1px}
+.splash{position:fixed;inset:0;z-index:30;background:#1E1C19;color:#F4EEE2;padding-inline:max(24px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;text-align:center;padding-block:24px}
+.splash .brand-line{font-family:var(--display);font-weight:700;font-size:22px;color:#A49B8D}
+.splash-q{color:#F4EEE2}
+.splash-q{font-family:var(--display);font-weight:700;font-size:clamp(30px,7vw,48px);line-height:1.1;letter-spacing:-.02em;max-width:16ch;text-wrap:balance}
+.splash-dots{display:flex;gap:8px}
+.splash-dots i{width:10px;height:10px;border-radius:50%;background:var(--fuchsia);animation:sd 1.2s ease-in-out infinite}
+.splash-dots i:nth-child(2){animation-delay:.15s;background:var(--butter)}.splash-dots i:nth-child(3){animation-delay:.3s;background:var(--olive)}
+@keyframes sd{0%,80%,100%{transform:translateY(0);opacity:.5}40%{transform:translateY(-8px);opacity:1}}
+@media (prefers-reduced-motion:reduce){.splash-dots i{animation:none;opacity:1}}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .empty{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
 .win{display:flex;gap:18px;align-items:center;padding:24px}
 .win .trophy{font-size:56px;line-height:1;flex:none}
@@ -329,7 +344,12 @@ th{font-size:12px;color:var(--muted);font-weight:600}
 <body>
 <div id="app" class="app solo">
   <aside class="side" id="side" hidden></aside>
-  <main id="main" class="main"></main>
+  <main id="main" class="main"><section class="splash" role="status" aria-live="polite"><span class="brand-line">Constantes</span><p class="splash-q" id="splash-q">¡Eso es! Hoy nos cumplimos.</p><span class="splash-dots" aria-hidden="true"><i></i><i></i><i></i></span></section></main>
+<script>
+/* Frase motivadora inmediata mientras carga la app */
+(function(){var f=['¡Eso es! Hoy nos cumplimos.','Así es: un tap y cumpliste.','Lo que haces hoy cuenta. ¡Vamos!','Un día a la vez, un check a la vez.','Hoy también es buen día para cumplirte.','Constancia, no perfección.','Tu yo del próximo mes te lo va a agradecer.','Pequeños pasos, grandes cambios.','El grupo te está esperando. ¡A darle!','Hoy no se negocia: hoy se cumple.','Cada check es una promesa cumplida.','Vas mejor de lo que crees. ¡Sigue!'];
+var el=document.getElementById('splash-q');if(el)el.textContent=f[Math.floor(Math.random()*f.length)];})();
+</script>
 </div>
 <nav class="bottom" id="bottom" hidden></nav>
 <div id="sheet" class="sheet" hidden></div>
@@ -962,6 +982,26 @@ const WCARDS=[
  ['olive','group','En grupo se llega más lejos','El grupo está para acompañarte, animarte y celebrar cada día cumplido.'],
  ['lav','calcheck','Un día a la vez','No se trata de la perfección, sino de la constancia. Cada check cuenta.']
 ];
+/* ---------- pantalla de carga ---------- */
+const FRASES=[
+ '¡Eso es! Hoy nos cumplimos.',
+ 'Así es: un tap y cumpliste.',
+ 'Lo que haces hoy cuenta. ¡Vamos!',
+ 'Un día a la vez, un check a la vez.',
+ 'Hoy también es buen día para cumplirte.',
+ 'Constancia, no perfección.',
+ 'Tu yo del próximo mes te lo va a agradecer.',
+ 'Pequeños pasos, grandes cambios.',
+ 'El grupo te está esperando. ¡A darle!',
+ 'Hoy no se negocia: hoy se cumple.',
+ 'Cada check es una promesa cumplida.',
+ 'Vas mejor de lo que crees. ¡Sigue!'
+];
+const FRASE=(document.getElementById('splash-q')||{}).textContent||FRASES[Math.floor(Math.random()*FRASES.length)];
+function viewLoading(){
+  return `<section class="splash" role="status" aria-live="polite"><span class="brand-line">Constantes</span>
+    <p class="splash-q">${esc(FRASE)}</p><span class="splash-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="sr-only">Cargando tu reto</span></section>`;
+}
 function viewWelcome(){
   let form;
   const who=userEmail?`<p class="muted" style="font-size:13px">Entraste como ${esc(userEmail)} · <button class="link" data-act="signout">Cerrar sesión</button></p>`:'';
@@ -1303,7 +1343,7 @@ function viewGrupo(){
   }
   const cards=ranked.map((x,i)=>{
     const st=streak(x.p.joined||T0,anyCheck(x.p));const act=activeDaysIn(x.p,k);
-    return `<article class="card pastel c-${personColor(x.id)} rank" role="button" tabindex="0" data-act="person" data-id="${esc(x.id)}" aria-label="Ver perfil de ${esc(x.p.name)}"><span class="pos num">${x.place&&x.place<=3?MEDAL[x.place-1]:i+1}</span>${avatar(x.id,44)}
+    return `<article class="card rank person" role="button" tabindex="0" data-act="person" data-id="${esc(x.id)}" aria-label="Ver perfil de ${esc(x.p.name)}"><span class="pos num">${x.place&&x.place<=3?MEDAL[x.place-1]:i+1}</span>${avatar(x.id,44)}
       <div class="who"><b>${esc(x.p.name)}</b>${x.id===uid?' <span class="chip">Tú</span>':''}
         <div class="meta">${sponsorOf(x.id)?`<span class="chip">Sponsor: ${esc(nameOf(sponsorOf(x.id)))}</span>`:''}<span class="chip num">${act} ${act===1?'día activo':'días activos'}</span>${isCur&&st.cur?`<span class="chip num">${ico('flame')}${st.cur}</span>`:''}</div></div>
       <div style="display:flex;align-items:center;gap:16px">${miniCal(x.p,k)}${ring(x.s,64,7)}</div></article>`}).join('')||`<p class="muted">Nadie estaba en el reto en ${mesK}.</p>`;
@@ -1409,7 +1449,7 @@ function render(){
   shell();
   const main=document.getElementById('main');
   const joined=isMember();
-  if(!joined)main.innerHTML=viewWelcome();
+  if(!joined)main.innerHTML=status==='loading'?viewLoading():viewWelcome();
   else{const oin=document.getElementById('chat-input');const kv=oin?oin.value:'';const near=(innerHeight+scrollY>=document.documentElement.scrollHeight-160);
     main.innerHTML=({hoy:viewHoy,chat:viewChatPage,metas:viewMetas,progreso:viewProgreso,metricas:viewInbody,grupo:viewGrupo,admin:viewAdmin}[state.tab]||viewHoy)();
     if(state.tab==='chat'){const i=document.getElementById('chat-input');if(i&&kv)i.value=kv;if(near)scrollChat()}}
