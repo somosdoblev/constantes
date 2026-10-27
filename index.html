@@ -594,15 +594,20 @@ function savePhone(v){const ph=normPhone(v);if(ph===null){toast('Revisa tu núme
   myContact={phone:ph};db.doc('contact/'+uid).set({phone:ph}).catch(()=>toast('No se pudo guardar tu WhatsApp. Intenta de nuevo.'));return true}
 const appLink=()=>location.origin+location.pathname;
 const waLink=(phone,text)=>`https://wa.me/${phone||''}?text=${encodeURIComponent(text)}`;
+const notifyMsg=q=>`¡Hola ${q.name}! 🎉 Ya estás dentro de Constantes. Entra aquí para empezar tu reto: ${appLink()}`;
 function viewNotify(id){
   const q=people[id];if(!q)return '';const ph=(allContacts[id]||{}).phone||'';
-  const msg=`¡Hola ${q.name}! 🎉 Ya estás dentro de Constantes. Entra aquí para empezar tu reto: ${appLink()}`;
+  const msg=notifyMsg(q);
   return `<div class="panel" role="dialog" aria-modal="true" aria-labelledby="nt-title">
     <div class="card-head" style="margin:0"><div style="display:flex;align-items:center;gap:14px;min-width:0">${avatar(id,44)}<h2 id="nt-title" style="overflow-wrap:anywhere">¡${esc(q.name)} ya está dentro!</h2></div><button class="icon-btn" data-act="close" aria-label="Cerrar">${ico('close')}</button></div>
     <p>Avísale para que entre a empezar su reto. El mensaje ya va escrito con el link de la app.</p>
-    <div class="cmt-body" style="font-size:14px">${esc(msg)}</div>
-    ${ph?`<a class="btn" href="${esc(waLink(ph,msg))}" target="_blank" rel="noopener" style="align-self:flex-start;text-decoration:none">${ico('chat')}Avisar por WhatsApp a ${esc(fmtPhone(ph))}</a>`
-      :`<p class="muted" style="font-size:14px">No dejó su WhatsApp. Puedes abrir WhatsApp y elegir su chat.</p><a class="btn" href="${esc(waLink('',msg))}" target="_blank" rel="noopener" style="align-self:flex-start;text-decoration:none">${ico('chat')}Elegir chat en WhatsApp</a>`}
+    <div class="cmt-body" id="nt-msg" style="font-size:14px;user-select:all">${esc(msg)}</div>
+    ${ph?`<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="${esc(waLink(ph,msg))}" target="_blank" rel="noopener" style="text-decoration:none">${ico('chat')}Avisar por WhatsApp a ${esc(fmtPhone(ph))}</a>
+        <button class="btn btn-ghost" data-act="copymsg" data-id="${esc(id)}">Copiar mensaje</button></div>`
+      :`<form id="nt-form" data-id="${esc(id)}" class="stack" style="gap:10px">
+        <p class="muted" style="font-size:14px">No dejó su WhatsApp. Escribe su número para abrir su chat con el mensaje listo, o copia el mensaje y pégalo tú en su chat.</p>
+        <label class="field" for="nt-phone">Su WhatsApp<input id="nt-phone" class="input" type="tel" inputmode="tel" maxlength="22" placeholder="+52 442 123 4567"><span class="muted" style="font-weight:500">Incluye el código de su país.</span></label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">${ico('chat')}Abrir su chat</button><button class="btn btn-ghost" type="button" data-act="copymsg" data-id="${esc(id)}">Copiar mensaje</button></div></form>`}
     <button class="btn btn-ghost" data-act="close" style="align-self:flex-end">Listo</button></div>`;
 }
 
@@ -1155,6 +1160,8 @@ document.addEventListener('click',e=>{
   switch(a){
    case 'tab':state.tab=b.dataset.tab;state.confirm=null;try{history.replaceState(null,'','#'+state.tab)}catch(_){}render();window.scrollTo(0,0);break;
    case 'profile':state.sheet=true;render();break;
+   case 'copymsg':{const q=people[b.dataset.id];if(!q)return;const msg=notifyMsg(q);const fb=()=>{const el=document.getElementById('nt-msg');if(el){const r=document.createRange();r.selectNodeContents(el);const sel=getSelection();sel.removeAllRanges();sel.addRange(r)}toast('Selecciona el mensaje y cópialo.')};
+     try{navigator.clipboard.writeText(msg).then(()=>toast('Mensaje copiado. Pégalo en su chat de WhatsApp.',5000),fb)}catch(_){fb()}break}
    case 'notify':{if(!isOwnerV)return;state.sheet='notify:'+b.dataset.id;render();break}
    case 'person':{const id=b.dataset.id;if(!people[id])return;state.sheet=id===uid?true:'person:'+id;render();break}
    case 'thread':{const k=b.dataset.k;state.openThread=state.openThread===k?null:k;render();if(state.openThread){const el=document.getElementById('cm-'+k);if(el)el.focus({preventScroll:true})}break}
@@ -1234,6 +1241,9 @@ document.addEventListener('submit',e=>{
     const item={id:uid8(),uid,text,at:Date.now()};const c=cheers[k]||(cheers[k]={});c.comments=[...(Array.isArray(c.comments)?c.comments:[]),item];
     if(inp)inp.value='';inp&&inp.blur();render();cheerWrite(k,{comments:arrayUnion(item)});return;
   }
+  if(f.id==='nt-form'){const q=people[f.dataset.id];if(!q)return;const ph=normPhone(document.getElementById('nt-phone').value);
+    if(!ph){toast('Escribe su número con el código de su país, por ejemplo +52 442 123 4567.',6000);return}
+    const url=waLink(ph,notifyMsg(q));const w=window.open(url,'_blank');if(w){try{w.opener=null}catch(_){}}else location.href=url;return}
   if(f.id==='pend-phone-form'){const v=readPhone('pend-phone');if(!v){toast('Escribe tu WhatsApp.');return}if(savePhone(v)){toast('Listo, te avisaremos por WhatsApp.');render()}return}
   if(f.id==='login-form'){
     const email=document.getElementById('lg-email').value.trim(),pw=document.getElementById('lg-pass').value;state.loginEmail=email;
