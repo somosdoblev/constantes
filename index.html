@@ -27,6 +27,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Constantes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js">
+<link rel="preconnect" href="https://firestore.googleapis.com">
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+<link rel="preconnect" href="https://securetoken.googleapis.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;500;600;700&display=swap">
@@ -314,7 +320,7 @@ th{font-size:12px;color:var(--muted);font-weight:600}
 .banner{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:18px;background:var(--surface-2);font-size:14px}
 .banner .ic{color:var(--warn);margin-top:1px}
 .splash{position:fixed;inset:0;z-index:30;background:#1E1C19;color:#F4EEE2;padding-inline:max(24px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;text-align:center;padding-block:24px}
-.splash .brand-line{font-family:var(--display);font-weight:700;font-size:22px;color:#A49B8D}
+.splash .brand-line{font-family:var(--display);font-weight:700;font-size:22px;color:#A49B8D;margin-bottom:44px}
 .splash-q{color:#F4EEE2}
 .splash-q{font-family:var(--display);font-weight:700;font-size:clamp(30px,7vw,48px);line-height:1.1;letter-spacing:-.02em;max-width:16ch;text-wrap:balance}
 .splash-dots{display:flex;gap:8px}
@@ -344,7 +350,7 @@ th{font-size:12px;color:var(--muted);font-weight:600}
 <body>
 <div id="app" class="app solo">
   <aside class="side" id="side" hidden></aside>
-  <main id="main" class="main"><section class="splash" role="status" aria-live="polite"><span class="brand-line">Constantes</span><p class="splash-q" id="splash-q">¡Eso es! Hoy nos cumplimos.</p><span class="splash-dots" aria-hidden="true"><i></i><i></i><i></i></span></section></main>
+  <main id="main" class="main"><section class="splash" role="status" aria-live="polite"><span class="brand-line">¡Eres constante!</span><p class="splash-q" id="splash-q">¡Eso es! Hoy nos cumplimos.</p><span class="splash-dots" aria-hidden="true"><i></i><i></i><i></i></span></section></main>
 <script>
 /* Frase motivadora inmediata mientras carga la app */
 (function(){var f=['¡Eso es! Hoy nos cumplimos.','Así es: un tap y cumpliste.','Lo que haces hoy cuenta. ¡Vamos!','Un día a la vez, un check a la vez.','Hoy también es buen día para cumplirte.','Constancia, no perfección.','Tu yo del próximo mes te lo va a agradecer.','Pequeños pasos, grandes cambios.','El grupo te está esperando. ¡A darle!','Hoy no se negocia: hoy se cumple.','Cada check es una promesa cumplida.','Vas mejor de lo que crees. ¡Sigue!'];
@@ -376,7 +382,7 @@ const FIRESTORE_DB="constantes";
 
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {getAuth,onAuthStateChanged,GoogleAuthProvider,signInWithPopup,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail,signOut} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {getFirestore,doc as fdoc,collection as fcol,setDoc,deleteDoc,onSnapshot,arrayUnion,arrayRemove,query as fquery,orderBy as forder,limit as flimit} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import {getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc as fdoc,collection as fcol,setDoc,deleteDoc,onSnapshot,arrayUnion,arrayRemove,query as fquery,orderBy as forder,limit as flimit} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 /* ---------- utilidades de fecha (zona America/Mexico_City) ---------- */
 const TZ='America/Mexico_City';
@@ -998,9 +1004,10 @@ const FRASES=[
  'Vas mejor de lo que crees. ¡Sigue!'
 ];
 const FRASE=(document.getElementById('splash-q')||{}).textContent||FRASES[Math.floor(Math.random()*FRASES.length)];
+const T_START=Date.now();setTimeout(()=>{if(status==='loading')render()},7200);
 function viewLoading(){
-  return `<section class="splash" role="status" aria-live="polite"><span class="brand-line">Constantes</span>
-    <p class="splash-q">${esc(FRASE)}</p><span class="splash-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="sr-only">Cargando tu reto</span></section>`;
+  return `<section class="splash" role="status" aria-live="polite"><span class="brand-line">¡Eres constante!</span>
+    <p class="splash-q">${esc(FRASE)}</p><span class="splash-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="sr-only">Cargando tu reto</span>${Date.now()-T_START>7000?'<p style="color:#A49B8D;font-size:14px;max-width:28ch">Tu conexión está un poco lenta. Ya casi…</p>':''}</section>`;
 }
 function viewWelcome(){
   let form;
@@ -1659,7 +1666,11 @@ function makeDb(fs){
 let chatUnsub=null;
 let subs=[],peopleUnsub=null,peopleMode=null,gotAdmin=false,gotPeople=false,cheersUnsub=null;
 const typing=()=>document.activeElement&&['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName);
-function maybeReady(){if(gotAdmin&&gotPeople&&status==='loading'){status='ready';render()}else if(status==='ready'&&!typing())render()}
+/* La frase de carga se queda al menos 1.8 segundos para que alcance a leerse. */
+const MIN_SPLASH=1800;let splashTimer=null;
+function maybeReady(){if(gotAdmin&&gotPeople&&status==='loading'){const wait=MIN_SPLASH-(Date.now()-T_START);
+  if(wait>0){if(!splashTimer)splashTimer=setTimeout(()=>{splashTimer=null;maybeReady()},wait);return}
+  status='ready';render()}else if(status==='ready'&&!typing())render()}
 function syncRoster(){
   const ids=[adminDoc.ownerId,...(adminDoc.approved||[])].filter(Boolean);const r={};
   for(const id of ids){if(people[id]&&people[id].name)r[id]=people[id].name;else if(adminDoc.roster&&adminDoc.roster[id])r[id]=adminDoc.roster[id]}
@@ -1675,11 +1686,11 @@ function onPeople(next){
   gotPeople=true;maybeReady();
 }
 function subscribePeople(){
-  const mode=isApproved()?'all':'self';
+  const mode=!gotAdmin||isApproved()?'all':'self';
+  if(isApproved()&&!chatUnsub)chatUnsub=db.collection('chat').recent('at',150,snap=>{chat=snap.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m&&typeof m.text==='string'&&typeof m.uid==='string').reverse();chatLoaded=true;tryBackfill();onChat()},()=>{});
+  if(isApproved()&&!cheersUnsub)cheersUnsub=db.collection('cheers').onSnapshot(snap=>{const n={};for(const d of snap.docs){const v=d.data();if(v)n[d.id]=v}cheers=n;if(state.tab==='chat')onChat();else if(status==='ready'&&!typing())render()},()=>{});
   if(mode===peopleMode)return;
   if(peopleUnsub)peopleUnsub();peopleMode=mode;
-  if(mode==='all'&&!chatUnsub)chatUnsub=db.collection('chat').recent('at',150,snap=>{chat=snap.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m&&typeof m.text==='string'&&typeof m.uid==='string').reverse();chatLoaded=true;tryBackfill();onChat()},()=>{});
-  if(mode==='all'&&!cheersUnsub)cheersUnsub=db.collection('cheers').onSnapshot(snap=>{const n={};for(const d of snap.docs){const v=d.data();if(v)n[d.id]=v}cheers=n;if(state.tab==='chat')onChat();else if(status==='ready'&&!typing())render()},()=>{});
   if(mode==='all')peopleUnsub=db.collection('people').onSnapshot(snap=>{const n={};for(const d of snap.docs){const v=d.data();if(v&&typeof v.name==='string')n[d.id]=v}onPeople(n)},
     ()=>{peopleMode=null;if(peopleUnsub)peopleUnsub();peopleUnsub=db.doc('people/'+uid).onSnapshot(s=>{const n={};if(s.exists){const v=s.data();if(v&&typeof v.name==='string')n[uid]=v}onPeople(n)},()=>{gotPeople=true;maybeReady()})});
   else peopleUnsub=db.doc('people/'+uid).onSnapshot(s=>{const n={};if(s.exists){const v=s.data();if(v&&typeof v.name==='string')n[uid]=v}onPeople(n)},()=>{gotPeople=true;maybeReady()});
@@ -1692,7 +1703,7 @@ function init(){
   render();
   if(!FIREBASE_CONFIG.apiKey||FIREBASE_CONFIG.apiKey.startsWith('PEGA')){status='offline';render();return}
   let app;try{app=initializeApp(FIREBASE_CONFIG)}catch(_){status='offline';render();return}
-  auth=getAuth(app);db=makeDb(getFirestore(app,FIRESTORE_DB));
+  auth=getAuth(app);let fs;try{fs=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})},FIRESTORE_DB)}catch(_){fs=getFirestore(app,FIRESTORE_DB)}db=makeDb(fs);
   onAuthStateChanged(auth,u=>{
     resetSession();
     if(!u){uid=null;userEmail='';status='signedout';render();return}
@@ -1701,6 +1712,7 @@ function init(){
     if(isOwnerV){TABS=[...BASE_TABS.slice(0,4),['admin','Admin','lock'],BASE_TABS[4]];try{if(location.hash==='#admin')state.tab='admin'}catch(_){}}
     else if(state.tab==='admin')state.tab='hoy';
     status='loading';render();
+    subscribePeople();
     subs.push(db.doc('admin/settings').onSnapshot(s=>{
       if(!adminSaver.busy()){
         const v=s.exists?s.data():{};
