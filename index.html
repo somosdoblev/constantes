@@ -631,6 +631,52 @@ function viewNotify(id){
     <button class="btn btn-ghost" data-act="close" style="align-self:flex-end">Listo</button></div>`;
 }
 
+/* ---------- metas nuevas ---------- */
+function goalEvents(id,from,to){
+  const q=people[id];if(!q)return [];const by={};
+  for(const g of q.goals||[]){if(g.archived||!g.created||g.created<from||g.created>to)continue;(by[g.created]=by[g.created]||[]).push(g)}
+  return Object.keys(by).map(d=>({id,d,goals:by[d],first:d===(q.joined||'')}));
+}
+function goalEvHtml(x,showDate){
+  const n=x.goals.length,lst=x.goals.map(g=>`<b>${esc(g.name)}</b> <span class="muted" style="font-size:12px">(${esc(freqText(g).toLowerCase())})</span>`).join(', ');
+  const lead=x.first?(n===1?'se propuso su primera meta:':'se propuso sus primeras metas:'):(n===1?'se propuso una nueva meta:':`se propuso ${n} metas nuevas:`);
+  return `<div class="event"><div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:20px">🎯</span>${avatar(x.id,32)}<span style="min-width:0;flex:1"><b>${esc(people[x.id].name)}</b> ${lead} ${lst}${showDate?`<br><span class="muted" style="font-size:12px">${fmtLong(x.d)}</span>`:''}</span></div>${thread('goal_'+x.id+'_'+x.d)}</div>`;
+}
+
+/* ---------- confeti ---------- */
+function confetti(){
+  try{if(matchMedia('(prefers-reduced-motion: reduce)').matches)return}catch(_){}
+  const c=document.createElement('canvas');c.setAttribute('aria-hidden','true');
+  c.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60';
+  document.body.appendChild(c);const ctx=c.getContext('2d');const dpr=Math.min(2,window.devicePixelRatio||1);
+  const W=c.width=innerWidth*dpr,H=c.height=innerHeight*dpr;
+  const cols=['#F3DA82','#F2B6D3','#AEB672','#B2C4EE','#D5B6CB','#1E1C19'];
+  const ps=Array.from({length:110},()=>({x:W/2+(Math.random()-.5)*W*.25,y:H*.35,vx:(Math.random()-.5)*16*dpr,vy:(-Math.random()*14-6)*dpr,s:(5+Math.random()*6)*dpr,r:Math.random()*6,vr:(Math.random()-.5)*.3,c:cols[Math.floor(Math.random()*cols.length)]}));
+  const t0=performance.now();
+  (function f(t){const k=(t-t0)/1700;ctx.clearRect(0,0,W,H);
+    for(const p of ps){p.vy+=.45*dpr;p.vx*=.99;p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;ctx.save();ctx.globalAlpha=Math.max(0,1-k);ctx.translate(p.x,p.y);ctx.rotate(p.r);ctx.fillStyle=p.c;ctx.fillRect(-p.s/2,-p.s/3,p.s,p.s*.6);ctx.restore()}
+    if(k<1)requestAnimationFrame(f);else c.remove()})(t0);
+}
+
+/* ---------- novedades del grupo (bolita en Grupo) ---------- */
+function activityKeys(){
+  const keys=[],from=addDays(T0,-6);
+  for(const id of visibleIds()){
+    if(id===uid)continue;
+    eachDay(from,T0,d=>{if(achievements(people[id],d).length)keys.push('ach:'+id+'_'+d)});
+    for(const e of goalEvents(id,from,T0))keys.push('goal:'+id+'_'+e.d+':'+e.goals.length);
+    const w=metricWin(id);if(w&&w.date>=from)keys.push('metric:'+id+'_'+w.date);
+    const ts=Number((adminDoc.approvedTs||{})[id])||0;if(ts&&Date.now()-ts<864e5)keys.push('welcome:'+id);
+  }
+  for(const c of adminDoc.celebrations||[])if(c&&c.from<=T0&&c.until>=T0)keys.push('cel:'+c.id);
+  for(const k of Object.keys(cheers)){const cm=cheers[k]&&cheers[k].comments;if(Array.isArray(cm))for(const x of cm)if(x&&x.uid!==uid&&x.id)keys.push('cm:'+x.id)}
+  return keys;
+}
+const SEEN_KEY=()=>'cst-seen-'+uid;
+function loadSeen(){try{return new Set(JSON.parse(localStorage.getItem(SEEN_KEY())||'[]'))}catch(_){return new Set()}}
+function markGroupSeen(){try{const ks=activityKeys();localStorage.setItem(SEEN_KEY(),JSON.stringify(ks.slice(-600)))}catch(_){}}
+function hasNewActivity(){if(!uid||!isApproved())return false;const seen=loadSeen();return activityKeys().some(k=>!seen.has(k))}
+
 /* ---------- reacciones y comentarios ---------- */
 const REACTS=['👏','🔥','💪','🎉','🙌'];
 function ago(ms){const m=Math.round((Date.now()-ms)/60000);if(m<1)return 'ahora';if(m<60)return `hace ${m} min`;const h=Math.round(m/60);if(h<24)return `hace ${h} h`;const d=Math.round(h/24);return d===1?'ayer':`hace ${d} días`}
@@ -699,7 +745,9 @@ function shell(){
   app.classList.toggle('solo',!joined);side.hidden=!joined;bottom.hidden=!joined;
   if(!joined)return;
   const nPend=isOwnerV?pendingIds().length:0;
-  const navBtns=TABS.map(([k,l,i])=>`<button class="nav-btn" data-act="tab" data-tab="${k}" ${state.tab===k?'aria-current="page"':''} ${k==='admin'&&nPend?`aria-label="Admin, ${nPend} por aprobar"`:''}>${ico(i)}<span>${l}</span>${k==='admin'&&nPend?'<span class="dot" aria-hidden="true"></span>':''}</button>`).join('');
+  if(state.tab==='grupo')markGroupSeen();
+  const newAct=state.tab!=='grupo'&&hasNewActivity();
+  const navBtns=TABS.map(([k,l,i])=>`<button class="nav-btn" data-act="tab" data-tab="${k}" ${state.tab===k?'aria-current="page"':''} ${k==='admin'&&nPend?`aria-label="Admin, ${nPend} por aprobar"`:k==='grupo'&&newAct?'aria-label="Grupo, hay novedades"':''}>${ico(i)}<span>${l}</span>${(k==='admin'&&nPend)||(k==='grupo'&&newAct)?'<span class="dot" aria-hidden="true"></span>':''}</button>`).join('');
   side.innerHTML=`<div class="brand">Constantes<span>Reto mensual de hábitos</span></div>${navBtns}
     <button class="me-chip" data-act="profile">${avatar(uid,40)}<span><b>${esc(myDoc.name)}</b><small>Mi perfil</small></span></button>`;
   bottom.innerHTML=navBtns;
@@ -799,7 +847,8 @@ function viewHoy(){
       achCard=`<div class="card pastel c-olive win win-big"><span class="trophy" aria-hidden="true">${first?'🏆':'🎉'}</span><div style="min-width:0"><span class="eyebrow">Cierre de ${prevName}</span><h2 class="win-title">${first?'¡Primer lugar del grupo!':`Cerraste ${prevName} con ${pct}%`}</h2><p>${first?`Cerraste ${prevName} con ${pct}% de tus metas. ¡Felicidades, ${esc(p.name)}!`:'Empieza un mes nuevo. ¡A superar tu marca!'}</p></div></div>`+achCard;
     }
   }
-  return topBar(`¡Hola, ${esc(p.name)}!`,fmtLong(T0)[0].toUpperCase()+fmtLong(T0).slice(1))+banners()+
+  const newsBanner=hasNewActivity()?`<button class="banner" data-act="tab" data-tab="grupo" style="width:100%;text-align:left;align-items:center;cursor:pointer"><span aria-hidden="true" style="font-size:20px">🎉</span><span style="flex:1">Hay novedades en tu grupo. Pasa a celebrar y comentar.</span><b>Ver grupo →</b></button>`:'';
+  return topBar(`¡Hola, ${esc(p.name)}!`,fmtLong(T0)[0].toUpperCase()+fmtLong(T0).slice(1))+banners()+newsBanner+
    `<div class="grid g-main">
      <section class="stack" style="gap:14px">${specialCards()}${achCard}
        <div class="card-head" style="margin:0"><div class="days" role="group" aria-label="Elegir día">${dayBtns}</div>
@@ -1094,10 +1143,14 @@ function viewGrupo(){
   const mWins=visibleIds().map(id=>({id,w:metricWin(id)})).filter(x=>x.w);
   const metricEv=(x)=>`<div class="event"><div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:20px">📈</span>${avatar(x.id,32)}<span style="min-width:0;flex:1"><b>${esc(people[x.id].name)}</b> ${esc(x.w.items.join(' y '))} en su último registro${x.w.date===T0?'':`<br><span class="muted" style="font-size:12px">${fmtLong(x.w.date)}</span>`}</span></div>${thread('metric_'+x.id+'_'+x.w.date)}</div>`;
   const todayM=mWins.filter(x=>x.w.date===T0);
-  const celebra=(isCur?specialCards():'')+winner+(isCur&&(todayAch.length||todayM.length)?`<div class="card pastel ${anyMonth?'c-rose win-big':'c-butter'} win"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0;flex:1"><h2 class="win-title">¡Hoy celebramos!</h2><div class="stack" style="gap:12px;margin-top:10px">${todayAch.map(x=>`<div class="event"><div style="display:flex;align-items:center;gap:10px">${avatar(x.id,32)}<span style="min-width:0"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}</span></div>${thread(x.id+'_'+T0)}</div>`).join('')}${todayM.map(metricEv).join('')}</div></div></div>`:'');
-  const feed=[];for(let i=1;i<=6&&feed.length<12;i++){const d=addDays(T0,-i);for(const id of visibleIds()){const a=achievements(people[id],d);if(a.length&&feed.length<12)feed.push({id,d,a})}}
-  const weekM=mWins.filter(x=>x.w.date<T0&&x.w.date>=addDays(T0,-6));
-  const feedHtml=(feed.length||weekM.length)?weekM.map(metricEv).join('')+feed.map(x=>`<div class="event"><div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:20px">🏆</span>${avatar(x.id,32)}<span style="min-width:0;flex:1"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}<br><span class="muted" style="font-size:12px">${fmtLong(x.d)}</span></span></div>${thread(x.id+'_'+x.d)}</div>`).join(''):'<p class="muted" style="font-size:14px">Aquí aparecerán las metas cumplidas de los últimos días.</p>';
+  const todayG=visibleIds().flatMap(id=>goalEvents(id,T0,T0));
+  const celebra=(isCur?specialCards():'')+winner+(isCur&&(todayAch.length||todayM.length||todayG.length)?`<div class="card pastel ${anyMonth?'c-rose win-big':'c-butter'} win"><span class="trophy" aria-hidden="true">🏆</span><div style="min-width:0;flex:1"><h2 class="win-title">¡Hoy celebramos!</h2><div class="stack" style="gap:12px;margin-top:10px">${todayAch.map(x=>`<div class="event"><div style="display:flex;align-items:center;gap:10px">${avatar(x.id,32)}<span style="min-width:0"><b>${esc(people[x.id].name)}</b> cumplió ${x.a.map(a=>(a.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(a.txt)).join(', ')}</span></div>${thread(x.id+'_'+T0)}</div>`).join('')}${todayM.map(metricEv).join('')}${todayG.map(x=>goalEvHtml(x,false)).join('')}</div></div></div>`:'');
+  const evs=[],from6=addDays(T0,-6),y1=addDays(T0,-1);
+  for(let i=1;i<=6;i++){const d=addDays(T0,-i);for(const id of visibleIds()){const a=achievements(people[id],d);if(a.length)evs.push({d,o:1,html:`<div class="event"><div style="display:flex;align-items:center;gap:10px"><span aria-hidden="true" style="font-size:20px">🏆</span>${avatar(id,32)}<span style="min-width:0;flex:1"><b>${esc(people[id].name)}</b> cumplió ${a.map(x=>(x.level==='month'?'<span class="chip">Meta del mes</span> ':'')+esc(x.txt)).join(', ')}<br><span class="muted" style="font-size:12px">${fmtLong(d)}</span></span></div>${thread(id+'_'+d)}</div>`})}}
+  for(const x of mWins.filter(x=>x.w.date<T0&&x.w.date>=from6))evs.push({d:x.w.date,o:2,html:metricEv(x)});
+  for(const id of visibleIds())for(const x of goalEvents(id,from6,y1))evs.push({d:x.d,o:3,html:goalEvHtml(x,true)});
+  evs.sort((a,b)=>b.d.localeCompare(a.d)||a.o-b.o);
+  const feedHtml=evs.length?evs.slice(0,15).map(x=>x.html).join(''):'<p class="muted" style="font-size:14px">Aquí aparecerán las metas nuevas y los logros de los últimos días.</p>';
   const since=id=>(adminDoc.approvedAt||{})[id]||people[id].joined||T0;
   const tsOf=id=>Number((adminDoc.approvedTs||{})[id])||0;
   const fresh=visibleIds().filter(id=>id!==adminDoc.ownerId&&(tsOf(id)?Date.now()-tsOf(id)<864e5:since(id)===T0)).sort((a,b)=>tsOf(b)-tsOf(a));
@@ -1119,7 +1172,7 @@ function viewGrupo(){
          ${isCur?`<p class="muted" style="font-size:12px;margin-top:12px">Compara el ritmo de este mes con el resultado final de ${mesP}.</p>`:''}</div>
        <div class="card pastel c-olive"><div class="card-head"><h3>Más constantes</h3><span aria-hidden="true">🏅</span></div><div class="stack" style="gap:12px">${consHtml}</div>
          <p class="muted" style="font-size:12px;margin-top:12px">Cuentan los meses completos con 80% o más de avance y el promedio mensual, a partir de 2 meses en el reto.</p></div>
-       <div class="card"><div class="card-head"><h3>Logros de la semana</h3></div><div class="stack" style="gap:12px">${feedHtml}</div></div>
+       <div class="card"><div class="card-head"><h3>Esta semana en el grupo</h3></div><div class="stack" style="gap:12px">${feedHtml}</div></div>
        <div class="card"><div class="card-head"><h3>Podios anteriores</h3>${ico('trophy')}</div><div class="stack" style="gap:16px">${pastHtml}</div></div>
        ${inviteCard()}
      </aside></div>`;
@@ -1178,7 +1231,7 @@ function addGoal(name,freq,target,icon,note){
   const used=goals.filter(g=>!g.archived).map(g=>g.color);
   const color=PALETTE.find(c=>!used.includes(c))||PALETTE[goals.length%5];
   goals.push({id:uid8(),name,freq,target,icon:icon||'target',color,created:T0,archived:null,note:note||null});
-  saveMe();note?toast(`Meta agregada: ${name}. ${note}`,9000):toast(`Meta agregada: ${name}`);return true;
+  saveMe();confetti();note?toast(`🎯 ¡Nueva meta: ${name}! ${note} Tu grupo la verá en Grupo.`,9000):toast(`🎯 ¡Nueva meta: ${name}! Tu grupo la verá en Grupo para animarte.`,6000);return true;
 }
 document.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]');if(!b)return;
@@ -1202,10 +1255,10 @@ document.addEventListener('click',e=>{
    case 'day':state.day=b.dataset.day;render();break;
    case 'toggle':{
      if(readOnly)return;const d=state.day;if(d>T0||d<addDays(T0,-3)){toast('Solo puedes marcar hasta 3 días atrás.');return}
-     const id=b.dataset.goal;const list=new Set(myDoc.checks[d]||[]);
+     const id=b.dataset.goal;const list=new Set(myDoc.checks[d]||[]);const before=achievements(myDoc,d).length;const adding=!list.has(id);
      list.has(id)?list.delete(id):list.add(id);
      if(list.size)myDoc.checks[d]=[...list];else delete myDoc.checks[d];
-     saveMe();break}
+     saveMe();if(adding&&achievements(myDoc,d).length>before)confetti();break}
    case 'sugg':{const s=SUGERIDAS[Number(b.dataset.i)];if(s&&!readOnly)addGoal(s.name,s.freq,s.target,s.icon,s.note);break}
    case 'nfreq':state.newGoal.name=(document.getElementById('ng-name')||{}).value||state.newGoal.name;state.newGoal.freq=b.dataset.f;state.newGoal.target=b.dataset.f==='weekly'?3:b.dataset.f==='monthly'?12:1;render();break;
    case 'tgt':{const g=myDoc.goals.find(x=>x.id===b.dataset.goal);if(!g)return;const max=g.freq==='weekly'?7:31;const n=Math.max(1,Math.min(max,g.target+Number(b.dataset.d)));if(n!==g.target){g.target=n;saveMe()}break}
