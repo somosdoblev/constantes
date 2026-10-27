@@ -573,12 +573,27 @@ function viewInstall(){
 }
 
 /* ---------- WhatsApp ---------- */
-function normPhone(v){const raw=String(v||'').trim();if(!raw)return '';let d=raw.replace(/\D/g,'');if(d.length===10)d='52'+d;if(d.length===13&&d.startsWith('521'))d='52'+d.slice(3);return d.length>=11&&d.length<=15?d:null}
-function fmtPhone(d){if(!d)return '';return d.startsWith('52')&&d.length===12?`+52 ${d.slice(2,5)} ${d.slice(5,8)} ${d.slice(8)}`:'+'+d}
+const CCODES=[['52','🇲🇽 México'],['57','🇨🇴 Colombia'],['1','🇺🇸 EE. UU. / Canadá / R. Dominicana'],['34','🇪🇸 España'],['54','🇦🇷 Argentina'],['56','🇨🇱 Chile'],['51','🇵🇪 Perú'],['593','🇪🇨 Ecuador'],['58','🇻🇪 Venezuela'],['502','🇬🇹 Guatemala'],['503','🇸🇻 El Salvador'],['504','🇭🇳 Honduras'],['505','🇳🇮 Nicaragua'],['506','🇨🇷 Costa Rica'],['507','🇵🇦 Panamá'],['53','🇨🇺 Cuba'],['591','🇧🇴 Bolivia'],['595','🇵🇾 Paraguay'],['598','🇺🇾 Uruguay'],['55','🇧🇷 Brasil'],['44','🇬🇧 Reino Unido'],['33','🇫🇷 Francia'],['49','🇩🇪 Alemania'],['39','🇮🇹 Italia']];
+const CC_SORTED=CCODES.map(c=>c[0]).sort((a,b)=>b.length-a.length);
+function splitPhone(d){d=String(d||'');for(const c of CC_SORTED)if(d.startsWith(c)&&d.length-c.length>=6)return[c,d.slice(c.length)];return['',d]}
+/* Acepta el número con o sin "+": siempre se guarda con código de país.
+   Si escriben solo 10 dígitos, se asume México (+52). */
+function normPhone(v){const raw=String(v||'').trim();if(!raw||raw==='+')return '';let d=raw.replace(/\D/g,'');
+  if(d.startsWith('00'))d=d.slice(2);
+  if(!raw.startsWith('+')&&d.length===10)d='52'+d;
+  if(d.startsWith('521')&&d.length===13)d='52'+d.slice(3);
+  return d.length>=8&&d.length<=15?d:null}
+function fmtPhone(d){if(!d)return '';const[c,n]=splitPhone(d);if(!c)return '+'+d;
+  const g=n.length===10?`${n.slice(0,3)} ${n.slice(3,6)} ${n.slice(6)}`:n.length===9?`${n.slice(0,3)} ${n.slice(3,6)} ${n.slice(6)}`:n.length===8?`${n.slice(0,4)} ${n.slice(4)}`:n;return `+${c} ${g}`}
+function phoneField(id,label,hint,current){
+  return `<label class="field" for="${id}">${label}<input id="${id}" class="input" type="tel" inputmode="tel" autocomplete="tel" maxlength="22" placeholder="+52 442 123 4567" value="${esc(current?fmtPhone(current):'')}">
+    <span class="muted" style="font-weight:500">Incluye el código de tu país.${hint?' '+hint:''}</span></label>`;
+}
+function readPhone(id){const el=document.getElementById(id);return (el&&el.value||'').trim()}
+function savePhone(v){const ph=normPhone(v);if(ph===null){toast('Revisa tu número: incluye el código de tu país, por ejemplo +52 442 123 4567.',6000);return false}
+  myContact={phone:ph};db.doc('contact/'+uid).set({phone:ph}).catch(()=>toast('No se pudo guardar tu WhatsApp. Intenta de nuevo.'));return true}
 const appLink=()=>location.origin+location.pathname;
 const waLink=(phone,text)=>`https://wa.me/${phone||''}?text=${encodeURIComponent(text)}`;
-function savePhone(v){const ph=normPhone(v);if(ph===null){toast('Ese número no parece válido. Escribe tu WhatsApp con 10 dígitos, por ejemplo 442 123 4567.',6000);return false}
-  myContact={phone:ph};db.doc('contact/'+uid).set({phone:ph}).catch(()=>toast('No se pudo guardar tu WhatsApp. Intenta de nuevo.'));return true}
 function viewNotify(id){
   const q=people[id];if(!q)return '';const ph=(allContacts[id]||{}).phone||'';
   const msg=`¡Hola ${q.name}! 🎉 Ya estás dentro de Constantes. Entra aquí para empezar tu reto: ${appLink()}`;
@@ -699,7 +714,7 @@ function viewWelcome(){
     form=`<div class="stack" style="gap:12px"><h2>¡Listo, ${esc(myDoc.name)}! Tu registro está en revisión.</h2>
       <p>${esc(ownerName())} lo aprobará pronto. Si dejas esta pantalla abierta, cambia sola en cuanto te apruebe.</p>
       ${myContact.phone?`<div class="banner" style="align-items:center">${ico('chat')}<span>Te avisaremos por WhatsApp al <b>${esc(fmtPhone(myContact.phone))}</b> cuando te aprueben.</span></div>`
-        :`<form id="pend-phone-form" class="stack" style="gap:8px;max-width:420px"><label class="field" for="pend-phone">¿Quieres que te avisemos por WhatsApp?<input id="pend-phone" class="input" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="442 123 4567"></label>
+        :`<form id="pend-phone-form" class="stack" style="gap:8px;max-width:420px">${phoneField('pend-phone','¿Quieres que te avisemos por WhatsApp?','','')}
           <button class="btn btn-sm" type="submit" style="align-self:flex-start">Guardar mi WhatsApp</button></form>`}
       ${sp?`<p>Tu sponsor: <b>${esc(nameOf(sp))}</b></p>`:''}${who}</div>`;
   }
@@ -710,8 +725,7 @@ function viewWelcome(){
       <div class="photo-pick">${ph}<label class="btn btn-ghost btn-sm" for="join-photo">${state.joinPhoto?'Cambiar foto':'Subir foto'}</label>
         <input id="join-photo" type="file" accept="image/*" hidden></div>
       <label class="field" for="join-name">¿Cómo te llamamos?<input id="join-name" class="input" maxlength="40" placeholder="Tu nombre" value="${esc(state.joinName)}" autocomplete="given-name"></label>
-      <label class="field" for="join-phone">Tu WhatsApp (opcional)<input id="join-phone" class="input" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="442 123 4567" value="${esc(state.joinPhone||'')}">
-        <span class="muted" style="font-weight:500">Para avisarte cuando te aprueben. Solo lo ve quien administra el reto.</span></label>
+      ${phoneField('join-phone','Tu WhatsApp (opcional)','Lo usamos para avisarte cuando te aprueben y solo lo ve quien administra el reto.',state.joinPhoneFull||'')}
       ${pool.length?`<label class="field" for="join-sponsor">¿Quién te invitó?<select id="join-sponsor" class="input"><option value="">Nadie, llegué por mi cuenta</option>${sponsorOptions(null,state.joinSponsor)}</select>
         <span class="muted" style="font-weight:500">Esa persona será tu sponsor: te acompaña y te da el ejemplo.</span></label>`:''}
       <button class="btn" type="submit" ${state.joinBusy?'disabled':''} style="align-self:flex-start">Me uno al reto 💪</button>${who}</form>`;
@@ -1085,8 +1099,7 @@ function viewSheet(){
     <div class="card-head" style="margin:0"><h2 id="pf-title">Mi perfil</h2><button class="icon-btn" data-act="close" aria-label="Cerrar">${ico('close')}</button></div>
     <div class="photo-pick">${avatar(uid,88)}<label class="btn btn-ghost btn-sm" for="pf-photo">${ico('camera')}Cambiar foto</label><input id="pf-photo" type="file" accept="image/*" hidden ${readOnly?'disabled':''}></div>
     <label class="field" for="pf-name">Nombre<input id="pf-name" class="input" maxlength="40" value="${esc(p.name)}" ${readOnly?'disabled':''}></label>
-    <label class="field" for="pf-phone">Mi WhatsApp (opcional)<input id="pf-phone" class="input" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="442 123 4567" value="${esc(myContact.phone?fmtPhone(myContact.phone):'')}">
-      <span class="muted" style="font-weight:500">Solo lo ve quien administra el reto.</span></label>
+    ${phoneField('pf-phone','Mi WhatsApp (opcional)','Solo lo ve quien administra el reto.',myContact.phone)}
     <label class="field" for="pf-sponsor">Mi sponsor<select id="pf-sponsor" class="input" ${readOnly||(adminDoc.sponsors||{})[uid]!==undefined?'disabled':''}><option value="">Sin sponsor</option>${sponsorOptions(uid,sponsorOf(uid))}</select>
       <span class="muted" style="font-weight:500">La persona que te invitó al reto y te da el ejemplo.</span></label>
     ${sponsoredBy(uid).length?`<div class="banner" style="align-items:center">${ico('group')}<span>Eres sponsor de <b>${sponsoredBy(uid).map(id=>esc(people[id].name)).join(', ')}</b>. Tu ejemplo cuenta.</span></div>`:''}
@@ -1189,7 +1202,8 @@ document.addEventListener('change',async e=>{
   if(t.dataset&&t.dataset.act==='sfield'){const sh=myDoc.share;const k=t.dataset.k;sh.fields=t.checked?[...new Set([...sh.fields,k])]:sh.fields.filter(f=>f!==k);syncShared();saveMe();return}
   if(t.id==='pf-sponsor'){const v=t.value;myDoc.sponsor=people[v]&&v!==uid?v:null;saveMe();toast(myDoc.sponsor?`Tu sponsor es ${people[v].name}.`:'Quitaste a tu sponsor.');return}
   if(t.dataset&&t.dataset.actSp){if(!isOwnerV)return;const id=t.dataset.id;adminDoc.sponsors={...(adminDoc.sponsors||{}),[id]:t.value||null};adminSaver.save();toast('Sponsor actualizado.');render();return}
-  if(t.id==='pf-phone'){if(!t.value.trim()){myContact={phone:''};db.doc('contact/'+uid).set({phone:''}).catch(()=>{});toast('Quitaste tu WhatsApp.');return}if(savePhone(t.value))toast('WhatsApp guardado.');return}
+  if((t.id==='join-phone'||t.id==='pend-phone')&&t.value.trim()){const n=normPhone(t.value);if(n)t.value=fmtPhone(n);else toast('Revisa tu número: incluye el código de tu país, por ejemplo +52 442 123 4567.',6000)}
+  if(t.id==='pf-phone'){const inp=t;if(inp.value.trim()&&normPhone(inp.value))inp.value=fmtPhone(normPhone(inp.value));if(!inp.value.trim()){myContact={phone:''};db.doc('contact/'+uid).set({phone:''}).catch(()=>{});toast('Quitaste tu WhatsApp.');return}if(savePhone(readPhone('pf-phone')))toast('WhatsApp guardado.');return}
   if(t.id==='pf-name'){const v=t.value.trim().slice(0,40);if(v&&v!==myDoc.name){myDoc.name=v;saveMe();toast('Nombre actualizado.')}else if(!v)render();return}
   if(t.id==='join-photo'||t.id==='pf-photo'){
     const f=t.files&&t.files[0];if(!f)return;
@@ -1199,14 +1213,14 @@ document.addEventListener('change',async e=>{
     }catch(_){toast('No pudimos leer esa imagen. Prueba con una foto JPG o PNG.')}
   }
 });
-document.addEventListener('input',e=>{if(e.target.id==='ng-name')state.newGoal.name=e.target.value;if(e.target.id==='ng-target')state.newGoal.target=Number(e.target.value)||1;if(e.target.id==='join-name')state.joinName=e.target.value;if(e.target.id==='join-sponsor')state.joinSponsor=e.target.value;if(e.target.id==='lg-email')state.loginEmail=e.target.value;if(e.target.id==='join-phone')state.joinPhone=e.target.value});
+document.addEventListener('input',e=>{if(e.target.id==='ng-name')state.newGoal.name=e.target.value;if(e.target.id==='ng-target')state.newGoal.target=Number(e.target.value)||1;if(e.target.id==='join-name')state.joinName=e.target.value;if(e.target.id==='join-sponsor')state.joinSponsor=e.target.value;if(e.target.id==='lg-email')state.loginEmail=e.target.value;if(e.target.id==='join-phone'){const v=readPhone('join-phone');state.joinPhoneFull=normPhone(v)||''}});
 document.addEventListener('submit',e=>{
   e.preventDefault();const f=e.target;
   if(f.id==='join-form'){
     const name=(document.getElementById('join-name').value||'').trim().slice(0,40);
     if(!name){toast('Escribe tu nombre para unirte.');return}
-    const phEl=document.getElementById('join-phone');if(phEl&&phEl.value.trim()&&normPhone(phEl.value)===null){toast('Ese número no parece válido. Escribe tu WhatsApp con 10 dígitos, por ejemplo 442 123 4567.',6000);return}
-    if(phEl&&phEl.value.trim())savePhone(phEl.value);
+    const phV=readPhone('join-phone');if(phV&&normPhone(phV)===null){toast('Revisa tu número: incluye el código de tu país, por ejemplo +52 442 123 4567.',6000);return}
+    if(phV)savePhone(phV);
     state.joinBusy=true;
     const spEl=document.getElementById('join-sponsor');const sponsor=spEl&&spEl.value&&nameOf(spEl.value)?spEl.value:null;
     myDoc={name,photo:state.joinPhoto||null,sponsor,joined:T0,goals:[],checks:{},share:{enabled:false,fields:[]},inbodyShared:[],updated:Date.now()};
@@ -1220,7 +1234,7 @@ document.addEventListener('submit',e=>{
     const item={id:uid8(),uid,text,at:Date.now()};const c=cheers[k]||(cheers[k]={});c.comments=[...(Array.isArray(c.comments)?c.comments:[]),item];
     if(inp)inp.value='';inp&&inp.blur();render();cheerWrite(k,{comments:arrayUnion(item)});return;
   }
-  if(f.id==='pend-phone-form'){const v=document.getElementById('pend-phone').value;if(!v.trim()){toast('Escribe tu WhatsApp.');return}if(savePhone(v)){toast('Listo, te avisaremos por WhatsApp.');render()}return}
+  if(f.id==='pend-phone-form'){const v=readPhone('pend-phone');if(!v){toast('Escribe tu WhatsApp.');return}if(savePhone(v)){toast('Listo, te avisaremos por WhatsApp.');render()}return}
   if(f.id==='login-form'){
     const email=document.getElementById('lg-email').value.trim(),pw=document.getElementById('lg-pass').value;state.loginEmail=email;
     if(!EMAIL_RE.test(email)){toast('Escribe un correo válido, por ejemplo nombre@correo.com.');return}
