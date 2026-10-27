@@ -136,6 +136,9 @@ input,select{font:inherit;color:var(--ink)}
 .react.on{border-color:var(--ink);background:var(--surface-2)}
 .pastel .react{background:rgba(255,255,255,.6);border-color:transparent;color:var(--on-pastel)}
 .pastel .react.on{background:#fff;border-color:var(--on-pastel)}
+.nav-btn{position:relative}
+.dot{position:absolute;top:7px;left:26px;width:10px;height:10px;border-radius:50%;background:#E5484D;box-shadow:0 0 0 2px var(--side)}
+.bottom .dot{top:5px;left:calc(50% + 6px)}
 .cm-btn{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;border:1.5px solid var(--ink);background:transparent;font-size:13px;font-weight:700;color:var(--ink);margin-left:auto}
 .cm-btn .ic{width:16px;height:16px}
 .pastel .cm-btn{border-color:var(--on-pastel);color:var(--on-pastel)}
@@ -405,7 +408,9 @@ let myDoc=null;              // copia local editable
 let inbody={entries:[]};     // privado
 let isOwnerV=false;
 const ADMIN_DEFAULT=()=>({celebrations:[],hidden:[],ownerId:null,sponsors:{},approved:[],roster:{},approvedAt:{},approvedTs:{}});
-let cheers={};                // logros y bienvenidas: key -> {reactions,comments}
+let cheers={};
+let myContact={phone:''};      // mi WhatsApp (solo lo vemos yo y la admin)
+let allContacts={};           // solo admin: uid -> {phone}                // logros y bienvenidas: key -> {reactions,comments}
 let adminDoc=ADMIN_DEFAULT();
 const T0=todayStr();
 const state={tab:'hoy',day:T0,calMonth:monthKey(T0),groupMonth:monthKey(T0),metric:'visceral',confirm:null,newGoal:{name:'',freq:'daily',target:3,icon:'target'},joinName:'',joinPhoto:null,joinBusy:false,sheet:false,celEmoji:'🎉',joinSponsor:'',loginMode:'signin',loginEmail:'',authBusy:false};
@@ -567,6 +572,25 @@ function viewInstall(){
     <button class="btn" data-act="close" style="align-self:flex-end">Entendido</button></div>`;
 }
 
+/* ---------- WhatsApp ---------- */
+function normPhone(v){const raw=String(v||'').trim();if(!raw)return '';let d=raw.replace(/\D/g,'');if(d.length===10)d='52'+d;if(d.length===13&&d.startsWith('521'))d='52'+d.slice(3);return d.length>=11&&d.length<=15?d:null}
+function fmtPhone(d){if(!d)return '';return d.startsWith('52')&&d.length===12?`+52 ${d.slice(2,5)} ${d.slice(5,8)} ${d.slice(8)}`:'+'+d}
+const appLink=()=>location.origin+location.pathname;
+const waLink=(phone,text)=>`https://wa.me/${phone||''}?text=${encodeURIComponent(text)}`;
+function savePhone(v){const ph=normPhone(v);if(ph===null){toast('Ese número no parece válido. Escribe tu WhatsApp con 10 dígitos, por ejemplo 442 123 4567.',6000);return false}
+  myContact={phone:ph};db.doc('contact/'+uid).set({phone:ph}).catch(()=>toast('No se pudo guardar tu WhatsApp. Intenta de nuevo.'));return true}
+function viewNotify(id){
+  const q=people[id];if(!q)return '';const ph=(allContacts[id]||{}).phone||'';
+  const msg=`¡Hola ${q.name}! 🎉 Ya estás dentro de Constantes. Entra aquí para empezar tu reto: ${appLink()}`;
+  return `<div class="panel" role="dialog" aria-modal="true" aria-labelledby="nt-title">
+    <div class="card-head" style="margin:0"><div style="display:flex;align-items:center;gap:14px;min-width:0">${avatar(id,44)}<h2 id="nt-title" style="overflow-wrap:anywhere">¡${esc(q.name)} ya está dentro!</h2></div><button class="icon-btn" data-act="close" aria-label="Cerrar">${ico('close')}</button></div>
+    <p>Avísale para que entre a empezar su reto. El mensaje ya va escrito con el link de la app.</p>
+    <div class="cmt-body" style="font-size:14px">${esc(msg)}</div>
+    ${ph?`<a class="btn" href="${esc(waLink(ph,msg))}" target="_blank" rel="noopener" style="align-self:flex-start;text-decoration:none">${ico('chat')}Avisar por WhatsApp a ${esc(fmtPhone(ph))}</a>`
+      :`<p class="muted" style="font-size:14px">No dejó su WhatsApp. Puedes abrir WhatsApp y elegir su chat.</p><a class="btn" href="${esc(waLink('',msg))}" target="_blank" rel="noopener" style="align-self:flex-start;text-decoration:none">${ico('chat')}Elegir chat en WhatsApp</a>`}
+    <button class="btn btn-ghost" data-act="close" style="align-self:flex-end">Listo</button></div>`;
+}
+
 /* ---------- reacciones y comentarios ---------- */
 const REACTS=['👏','🔥','💪','🎉','🙌'];
 function ago(ms){const m=Math.round((Date.now()-ms)/60000);if(m<1)return 'ahora';if(m<60)return `hace ${m} min`;const h=Math.round(m/60);if(h<24)return `hace ${h} h`;const d=Math.round(h/24);return d===1?'ayer':`hace ${d} días`}
@@ -634,7 +658,8 @@ function shell(){
   const app=document.getElementById('app'),side=document.getElementById('side'),bottom=document.getElementById('bottom');
   app.classList.toggle('solo',!joined);side.hidden=!joined;bottom.hidden=!joined;
   if(!joined)return;
-  const navBtns=TABS.map(([k,l,i])=>`<button class="nav-btn" data-act="tab" data-tab="${k}" ${state.tab===k?'aria-current="page"':''}>${ico(i)}<span>${l}</span></button>`).join('');
+  const nPend=isOwnerV?pendingIds().length:0;
+  const navBtns=TABS.map(([k,l,i])=>`<button class="nav-btn" data-act="tab" data-tab="${k}" ${state.tab===k?'aria-current="page"':''} ${k==='admin'&&nPend?`aria-label="Admin, ${nPend} por aprobar"`:''}>${ico(i)}<span>${l}</span>${k==='admin'&&nPend?'<span class="dot" aria-hidden="true"></span>':''}</button>`).join('');
   side.innerHTML=`<div class="brand">Constantes<span>Reto mensual de hábitos</span></div>${navBtns}
     <button class="me-chip" data-act="profile">${avatar(uid,40)}<span><b>${esc(myDoc.name)}</b><small>Mi perfil</small></span></button>`;
   bottom.innerHTML=navBtns;
@@ -672,7 +697,10 @@ function viewWelcome(){
   else if(myDoc&&!isApproved()){
     const sp=sponsorOf(uid);
     form=`<div class="stack" style="gap:12px"><h2>¡Listo, ${esc(myDoc.name)}! Tu registro está en revisión.</h2>
-      <p>${esc(ownerName())} lo aprobará pronto. Cuando te apruebe, esta pantalla cambia sola y podrás empezar a marcar tus metas.</p>
+      <p>${esc(ownerName())} lo aprobará pronto. Si dejas esta pantalla abierta, cambia sola en cuanto te apruebe.</p>
+      ${myContact.phone?`<div class="banner" style="align-items:center">${ico('chat')}<span>Te avisaremos por WhatsApp al <b>${esc(fmtPhone(myContact.phone))}</b> cuando te aprueben.</span></div>`
+        :`<form id="pend-phone-form" class="stack" style="gap:8px;max-width:420px"><label class="field" for="pend-phone">¿Quieres que te avisemos por WhatsApp?<input id="pend-phone" class="input" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="442 123 4567"></label>
+          <button class="btn btn-sm" type="submit" style="align-self:flex-start">Guardar mi WhatsApp</button></form>`}
       ${sp?`<p>Tu sponsor: <b>${esc(nameOf(sp))}</b></p>`:''}${who}</div>`;
   }
   else{
@@ -682,6 +710,8 @@ function viewWelcome(){
       <div class="photo-pick">${ph}<label class="btn btn-ghost btn-sm" for="join-photo">${state.joinPhoto?'Cambiar foto':'Subir foto'}</label>
         <input id="join-photo" type="file" accept="image/*" hidden></div>
       <label class="field" for="join-name">¿Cómo te llamamos?<input id="join-name" class="input" maxlength="40" placeholder="Tu nombre" value="${esc(state.joinName)}" autocomplete="given-name"></label>
+      <label class="field" for="join-phone">Tu WhatsApp (opcional)<input id="join-phone" class="input" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="442 123 4567" value="${esc(state.joinPhone||'')}">
+        <span class="muted" style="font-weight:500">Para avisarte cuando te aprueben. Solo lo ve quien administra el reto.</span></label>
       ${pool.length?`<label class="field" for="join-sponsor">¿Quién te invitó?<select id="join-sponsor" class="input"><option value="">Nadie, llegué por mi cuenta</option>${sponsorOptions(null,state.joinSponsor)}</select>
         <span class="muted" style="font-weight:500">Esa persona será tu sponsor: te acompaña y te da el ejemplo.</span></label>`:''}
       <button class="btn" type="submit" ${state.joinBusy?'disabled':''} style="align-self:flex-start">Me uno al reto 💪</button>${who}</form>`;
@@ -934,7 +964,7 @@ function viewAdmin(){
   const hidden=adminDoc.hidden||[];
   const parts=members.map(id=>{const h=hidden.includes(id);return `<div style="display:flex;align-items:center;gap:12px">${avatar(id,40)}<span style="flex:1;min-width:0"><b>${esc(people[id].name)}</b>${id===uid?' <span class="chip">Tú</span>':''}<br><span class="muted" style="font-size:12px">En el reto desde el ${fmtShort(people[id].joined||T0)}</span>
       <select id="ad-sp-${esc(id)}" data-act-sp="1" data-id="${esc(id)}" class="input" style="margin-top:6px;padding:6px 10px;font-size:13px" aria-label="Sponsor de ${esc(people[id].name)}"><option value="">Sin sponsor</option>${sponsorOptions(id,sponsorOf(id))}</select></span>
-      <button class="btn btn-sm ${h?'':'btn-ghost'}" data-act="hide" data-id="${esc(id)}">${h?'Mostrar en el grupo':'Ocultar del grupo'}</button></div>`}).join('');
+      <span style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">${id!==uid?`<button class="btn btn-sm btn-ghost" data-act="notify" data-id="${esc(id)}">${ico('chat')}Avisar</button>`:''}<button class="btn btn-sm ${h?'':'btn-ghost'}" data-act="hide" data-id="${esc(id)}">${h?'Mostrar en el grupo':'Ocultar del grupo'}</button></span></div>`}).join('');
   return topBar('Admin','Solo tú ves esta sección. Desde aquí apruebas registros nuevos, agregas celebraciones especiales y administras participantes.')+
    `<div class="grid g-main">
      <section class="stack" style="gap:16px">
@@ -1055,6 +1085,8 @@ function viewSheet(){
     <div class="card-head" style="margin:0"><h2 id="pf-title">Mi perfil</h2><button class="icon-btn" data-act="close" aria-label="Cerrar">${ico('close')}</button></div>
     <div class="photo-pick">${avatar(uid,88)}<label class="btn btn-ghost btn-sm" for="pf-photo">${ico('camera')}Cambiar foto</label><input id="pf-photo" type="file" accept="image/*" hidden ${readOnly?'disabled':''}></div>
     <label class="field" for="pf-name">Nombre<input id="pf-name" class="input" maxlength="40" value="${esc(p.name)}" ${readOnly?'disabled':''}></label>
+    <label class="field" for="pf-phone">Mi WhatsApp (opcional)<input id="pf-phone" class="input" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="442 123 4567" value="${esc(myContact.phone?fmtPhone(myContact.phone):'')}">
+      <span class="muted" style="font-weight:500">Solo lo ve quien administra el reto.</span></label>
     <label class="field" for="pf-sponsor">Mi sponsor<select id="pf-sponsor" class="input" ${readOnly||(adminDoc.sponsors||{})[uid]!==undefined?'disabled':''}><option value="">Sin sponsor</option>${sponsorOptions(uid,sponsorOf(uid))}</select>
       <span class="muted" style="font-weight:500">La persona que te invitó al reto y te da el ejemplo.</span></label>
     ${sponsoredBy(uid).length?`<div class="banner" style="align-items:center">${ico('group')}<span>Eres sponsor de <b>${sponsoredBy(uid).map(id=>esc(people[id].name)).join(', ')}</b>. Tu ejemplo cuenta.</span></div>`:''}
@@ -1076,7 +1108,7 @@ function render(){
   if(!joined)main.innerHTML=viewWelcome();
   else main.innerHTML=({hoy:viewHoy,metas:viewMetas,progreso:viewProgreso,metricas:viewInbody,grupo:viewGrupo,admin:viewAdmin}[state.tab]||viewHoy)();
   const sh=document.getElementById('sheet');
-  if(joined&&state.sheet){sh.innerHTML=state.sheet==='install'?viewInstall():(typeof state.sheet==='string'&&state.sheet.startsWith('person:'))?viewPerson(state.sheet.slice(7)):viewSheet();sh.hidden=false}else{sh.hidden=true;sh.innerHTML=''}
+  if(joined&&state.sheet){sh.innerHTML=state.sheet==='install'?viewInstall():(typeof state.sheet==='string'&&state.sheet.startsWith('notify:'))?viewNotify(state.sheet.slice(7)):(typeof state.sheet==='string'&&state.sheet.startsWith('person:'))?viewPerson(state.sheet.slice(7)):viewSheet();sh.hidden=false}else{sh.hidden=true;sh.innerHTML=''}
 }
 
 /* ---------- acciones ---------- */
@@ -1110,6 +1142,7 @@ document.addEventListener('click',e=>{
   switch(a){
    case 'tab':state.tab=b.dataset.tab;state.confirm=null;try{history.replaceState(null,'','#'+state.tab)}catch(_){}render();window.scrollTo(0,0);break;
    case 'profile':state.sheet=true;render();break;
+   case 'notify':{if(!isOwnerV)return;state.sheet='notify:'+b.dataset.id;render();break}
    case 'person':{const id=b.dataset.id;if(!people[id])return;state.sheet=id===uid?true:'person:'+id;render();break}
    case 'thread':{const k=b.dataset.k;state.openThread=state.openThread===k?null:k;render();if(state.openThread){const el=document.getElementById('cm-'+k);if(el)el.focus({preventScroll:true})}break}
    case 'react':{const k=b.dataset.k,em=b.dataset.e;if(!REACTS.includes(em))return;const c=cheers[k]||(cheers[k]={});const r=c.reactions||(c.reactions={});const ids=Array.isArray(r[em])?r[em]:[];const mine=ids.includes(uid);
@@ -1134,7 +1167,7 @@ document.addEventListener('click',e=>{
    case 'celemoji':state.celEmoji=b.dataset.e;document.querySelectorAll('[data-act="celemoji"]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));return;
    case 'delcel':{if(!isOwnerV)return;const id=b.dataset.id;if(state.confirm==='cel:'+id){adminDoc.celebrations=adminDoc.celebrations.filter(c=>c.id!==id);state.confirm=null;adminSaver.save();toast('Celebración borrada.');render()}else{state.confirm='cel:'+id;render()}break}
    case 'hide':{if(!isOwnerV)return;const id=b.dataset.id;const h=new Set(adminDoc.hidden||[]);h.has(id)?h.delete(id):h.add(id);adminDoc.hidden=[...h];adminSaver.save();render();break}
-   case 'approve':{if(!isOwnerV)return;const id=b.dataset.id;if(!people[id])return;adminDoc.approved=[...new Set([...(adminDoc.approved||[]),id])];adminDoc.roster={...(adminDoc.roster||{}),[id]:people[id].name};adminDoc.approvedAt={...(adminDoc.approvedAt||{}),[id]:T0};adminDoc.approvedTs={...(adminDoc.approvedTs||{}),[id]:Date.now()};adminSaver.save();toast(`${people[id].name} ya está en el reto. El grupo verá su bienvenida.`);render();break}
+   case 'approve':{if(!isOwnerV)return;const id=b.dataset.id;if(!people[id])return;adminDoc.approved=[...new Set([...(adminDoc.approved||[]),id])];adminDoc.roster={...(adminDoc.roster||{}),[id]:people[id].name};adminDoc.approvedAt={...(adminDoc.approvedAt||{}),[id]:T0};adminDoc.approvedTs={...(adminDoc.approvedTs||{}),[id]:Date.now()};adminSaver.save();state.sheet='notify:'+id;render();break}
    case 'reject':{if(!isOwnerV)return;const id=b.dataset.id;if(state.confirm==='rej:'+id){state.confirm=null;db.doc('people/'+id).delete().then(()=>toast('Registro rechazado.')).catch(()=>toast('No se pudo rechazar. Intenta de nuevo.'));render()}else{state.confirm='rej:'+id;render()}break}
    case 'copylink':{const link=inviteLink();const fb=()=>{const el=document.getElementById('inv-link');if(el){const r=document.createRange();r.selectNodeContents(el);const sel=getSelection();sel.removeAllRanges();sel.addRange(r)}toast('Selecciona el link y cópialo.')};
      try{navigator.clipboard.writeText(link).then(()=>toast('Link copiado. Compártelo por WhatsApp o donde quieras.'),fb)}catch(_){fb()}break}
@@ -1156,6 +1189,7 @@ document.addEventListener('change',async e=>{
   if(t.dataset&&t.dataset.act==='sfield'){const sh=myDoc.share;const k=t.dataset.k;sh.fields=t.checked?[...new Set([...sh.fields,k])]:sh.fields.filter(f=>f!==k);syncShared();saveMe();return}
   if(t.id==='pf-sponsor'){const v=t.value;myDoc.sponsor=people[v]&&v!==uid?v:null;saveMe();toast(myDoc.sponsor?`Tu sponsor es ${people[v].name}.`:'Quitaste a tu sponsor.');return}
   if(t.dataset&&t.dataset.actSp){if(!isOwnerV)return;const id=t.dataset.id;adminDoc.sponsors={...(adminDoc.sponsors||{}),[id]:t.value||null};adminSaver.save();toast('Sponsor actualizado.');render();return}
+  if(t.id==='pf-phone'){if(!t.value.trim()){myContact={phone:''};db.doc('contact/'+uid).set({phone:''}).catch(()=>{});toast('Quitaste tu WhatsApp.');return}if(savePhone(t.value))toast('WhatsApp guardado.');return}
   if(t.id==='pf-name'){const v=t.value.trim().slice(0,40);if(v&&v!==myDoc.name){myDoc.name=v;saveMe();toast('Nombre actualizado.')}else if(!v)render();return}
   if(t.id==='join-photo'||t.id==='pf-photo'){
     const f=t.files&&t.files[0];if(!f)return;
@@ -1165,12 +1199,14 @@ document.addEventListener('change',async e=>{
     }catch(_){toast('No pudimos leer esa imagen. Prueba con una foto JPG o PNG.')}
   }
 });
-document.addEventListener('input',e=>{if(e.target.id==='ng-name')state.newGoal.name=e.target.value;if(e.target.id==='ng-target')state.newGoal.target=Number(e.target.value)||1;if(e.target.id==='join-name')state.joinName=e.target.value;if(e.target.id==='join-sponsor')state.joinSponsor=e.target.value;if(e.target.id==='lg-email')state.loginEmail=e.target.value});
+document.addEventListener('input',e=>{if(e.target.id==='ng-name')state.newGoal.name=e.target.value;if(e.target.id==='ng-target')state.newGoal.target=Number(e.target.value)||1;if(e.target.id==='join-name')state.joinName=e.target.value;if(e.target.id==='join-sponsor')state.joinSponsor=e.target.value;if(e.target.id==='lg-email')state.loginEmail=e.target.value;if(e.target.id==='join-phone')state.joinPhone=e.target.value});
 document.addEventListener('submit',e=>{
   e.preventDefault();const f=e.target;
   if(f.id==='join-form'){
     const name=(document.getElementById('join-name').value||'').trim().slice(0,40);
     if(!name){toast('Escribe tu nombre para unirte.');return}
+    const phEl=document.getElementById('join-phone');if(phEl&&phEl.value.trim()&&normPhone(phEl.value)===null){toast('Ese número no parece válido. Escribe tu WhatsApp con 10 dígitos, por ejemplo 442 123 4567.',6000);return}
+    if(phEl&&phEl.value.trim())savePhone(phEl.value);
     state.joinBusy=true;
     const spEl=document.getElementById('join-sponsor');const sponsor=spEl&&spEl.value&&nameOf(spEl.value)?spEl.value:null;
     myDoc={name,photo:state.joinPhoto||null,sponsor,joined:T0,goals:[],checks:{},share:{enabled:false,fields:[]},inbodyShared:[],updated:Date.now()};
@@ -1184,6 +1220,7 @@ document.addEventListener('submit',e=>{
     const item={id:uid8(),uid,text,at:Date.now()};const c=cheers[k]||(cheers[k]={});c.comments=[...(Array.isArray(c.comments)?c.comments:[]),item];
     if(inp)inp.value='';inp&&inp.blur();render();cheerWrite(k,{comments:arrayUnion(item)});return;
   }
+  if(f.id==='pend-phone-form'){const v=document.getElementById('pend-phone').value;if(!v.trim()){toast('Escribe tu WhatsApp.');return}if(savePhone(v)){toast('Listo, te avisaremos por WhatsApp.');render()}return}
   if(f.id==='login-form'){
     const email=document.getElementById('lg-email').value.trim(),pw=document.getElementById('lg-pass').value;state.loginEmail=email;
     if(!EMAIL_RE.test(email)){toast('Escribe un correo válido, por ejemplo nombre@correo.com.');return}
@@ -1264,7 +1301,7 @@ function subscribePeople(){
   else peopleUnsub=db.doc('people/'+uid).onSnapshot(s=>{const n={};if(s.exists){const v=s.data();if(v&&typeof v.name==='string')n[uid]=v}onPeople(n)},()=>{gotPeople=true;maybeReady()});
 }
 function resetSession(){
-  subs.forEach(u=>{try{u()}catch(_){}});subs=[];if(cheersUnsub){try{cheersUnsub()}catch(_){}}cheersUnsub=null;cheers={};state.openThread=null;if(peopleUnsub){try{peopleUnsub()}catch(_){}}peopleUnsub=null;peopleMode=null;
+  subs.forEach(u=>{try{u()}catch(_){}});subs=[];if(cheersUnsub){try{cheersUnsub()}catch(_){}}cheersUnsub=null;cheers={};myContact={phone:''};allContacts={};state.openThread=null;if(peopleUnsub){try{peopleUnsub()}catch(_){}}peopleUnsub=null;peopleMode=null;
   gotAdmin=false;gotPeople=false;people={};myDoc=null;inbody={entries:[]};adminDoc=ADMIN_DEFAULT();isOwnerV=false;TABS=[...BASE_TABS];state.sheet=false;
 }
 function init(){
@@ -1289,6 +1326,8 @@ function init(){
       }
       gotAdmin=true;subscribePeople();if(isOwnerV&&gotPeople)syncRoster();maybeReady();
     },()=>{gotAdmin=true;subscribePeople();maybeReady()}));
+    subs.push(db.doc('contact/'+uid).onSnapshot(s=>{const v=s.exists?s.data():null;myContact={phone:v&&typeof v.phone==='string'?v.phone:''};if(status==='ready'&&!typing())render()},()=>{}));
+    if(isOwnerV)subs.push(db.collection('contact').onSnapshot(snap=>{const n={};for(const d of snap.docs){const v=d.data();if(v&&typeof v.phone==='string')n[d.id]={phone:v.phone}}allContacts=n},()=>{}));
     subs.push(db.doc('private/'+uid).onSnapshot(s=>{
       if(ibSaver.busy())return;
       const v=s.exists?s.data():null;inbody={entries:Array.isArray(v&&v.entries)?JSON.parse(JSON.stringify(v.entries)):[]};
