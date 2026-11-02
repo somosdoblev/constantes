@@ -441,6 +441,7 @@ const P={
  trash:'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13',
  alert:'M12 4l9 16H3zM12 10v4M12 17h.01',
  close:'M6 6l12 12M18 6L6 18',
+ pencil:'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
  chat:'M4 5h16v11H9l-5 4z',
  nosoda:'M7.5 4h9l-1.4 16H8.9zM8 9h8M4 4l16 16',
  nosugar:'M6 8.5l6-3 6 3v7l-6 3-6-3zM6 8.5l6 3 6-3M12 11.5v7M4 4l16 16'
@@ -497,7 +498,10 @@ const isDone=(p,g,d)=>{const c=p.checks&&p.checks[d];return Array.isArray(c)&&c.
 const hasQty=g=>Number(g.qty)>0;
 const amountOf=(p,g,d)=>{const a=p.amounts&&p.amounts[d];const v=a&&a[g.id];return typeof v==='number'&&v>=0?v:null};
 /* Cuánto vale un día para una meta: 1 si está completa; en metas con cantidad, la fracción (8,500 de 10,000 = 0.85). */
-function dayVal(p,g,d){if(isDone(p,g,d))return 1;if(hasQty(g)){const a=amountOf(p,g,d);if(a!=null)return Math.max(0,Math.min(1,a/Number(g.qty)))}return 0}
+/* Cantidad meta vigente en una fecha. Al editarla, el cambio cuenta desde ese día y los días anteriores se quedan como estaban. */
+function qtyAt(g,d){const h=(Array.isArray(g.qtyHist)?g.qtyHist:[]).filter(x=>x&&Number(x.qty)>0&&typeof x.from==='string').sort((a,b)=>a.from.localeCompare(b.from));
+  if(!h.length)return Number(g.qty);let q=Number(h[0].qty);for(const x of h)if(x.from<=d)q=Number(x.qty);return q}
+function dayVal(p,g,d){if(isDone(p,g,d))return 1;if(hasQty(g)){const a=amountOf(p,g,d);if(a!=null)return Math.max(0,Math.min(1,a/qtyAt(g,d)))}return 0}
 const fmtQty=(v,g)=>`${Number(v).toLocaleString('es-MX',{maximumFractionDigits:Number(g&&g.qty)<10?1:0})}`;
 const fmtDone=v=>Number.isInteger(v)?String(v):v.toLocaleString('es-MX',{maximumFractionDigits:1});
 function goalProgress(p,g,start,end){
@@ -819,15 +823,29 @@ function onChat(){
 /* ---------- metas con cantidad ---------- */
 function viewQty(gid){
   const g=(myDoc.goals||[]).find(x=>x.id===gid);if(!g)return '';const d=state.day;const a=amountOf(myDoc,g,d);
-  const cur=a!=null?a:(isDone(myDoc,g,d)?Number(g.qty):'');
+  const Q=qtyAt(g,d);const cur=a!=null?a:(isDone(myDoc,g,d)?Q:'');
   return `<form id="qty-form" data-goal="${esc(g.id)}" class="panel" role="dialog" aria-modal="true" aria-labelledby="q-title">
     <div class="card-head" style="margin:0"><div style="display:flex;align-items:center;gap:12px;min-width:0"><span class="tile c-${g.color}" style="width:44px;height:44px;border-radius:14px;display:grid;place-items:center;flex:none;color:var(--on-pastel)">${ico(g.icon)}</span><h2 id="q-title" style="overflow-wrap:anywhere">${esc(g.name)}</h2></div><button type="button" class="icon-btn" data-act="close" aria-label="Cerrar">${ico('close')}</button></div>
     <label class="field" for="q-val">¿Cuánto llevas ${d===T0?'hoy':'el '+fmtLong(d)}?
       <span style="display:flex;gap:8px;align-items:center"><input id="q-val" class="input num" type="number" inputmode="decimal" min="0" step="any" value="${cur===''?'':cur}" placeholder="0" style="flex:1"><b>${esc(g.unit||'')}</b></span>
-      <span class="muted" style="font-weight:500">Tu meta es ${fmtQty(g.qty,g)} ${esc(g.unit||'')}. Si te quedas cerca, cuenta la parte que hiciste: ${fmtQty(g.qty*.85,g)} ${esc(g.unit||'')} suman 85% de ese día.</span></label>
+      <span class="muted" style="font-weight:500">Tu meta es ${fmtQty(Q,g)} ${esc(g.unit||'')}. Si te quedas cerca, cuenta la parte que hiciste: ${fmtQty(Q*.85,g)} ${esc(g.unit||'')} suman 85% de ese día.</span></label>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Guardar</button>
-      <button class="btn btn-ghost" type="button" data-act="qtyfull" data-goal="${esc(g.id)}">✓ Llegué a ${fmtQty(g.qty,g)}</button>
+      <button class="btn btn-ghost" type="button" data-act="qtyfull" data-goal="${esc(g.id)}">✓ Llegué a ${fmtQty(Q,g)}</button>
       ${cur!==''?`<button class="btn btn-ghost" type="button" data-act="qtyclear" data-goal="${esc(g.id)}">Borrar registro</button>`:''}</div></form>`;
+}
+function viewEditGoal(gid){
+  const g=(myDoc.goals||[]).find(x=>x.id===gid);if(!g)return '';
+  const fq=state.editFreq||g.freq,maxT=fq==='weekly'?7:31,tgt=fq===g.freq?g.target:(fq==='weekly'?Math.min(g.target||3,7):fq==='monthly'?Math.max(g.target||12,1):1);
+  const opt=(v,l)=>`<option value="${v}" ${fq===v?'selected':''}>${l}</option>`;
+  return `<form id="edit-goal-form" data-goal="${esc(g.id)}" class="panel" role="dialog" aria-modal="true" aria-labelledby="eg-title">
+    <div class="card-head" style="margin:0"><div style="display:flex;align-items:center;gap:12px;min-width:0"><span class="tile c-${g.color}" style="width:44px;height:44px;border-radius:14px;display:grid;place-items:center;flex:none;color:var(--on-pastel)">${ico(g.icon)}</span><h2 id="eg-title">Editar meta</h2></div><button type="button" class="icon-btn" data-act="close" aria-label="Cerrar">${ico('close')}</button></div>
+    <label class="field" for="eg-name">Nombre<input id="eg-name" class="input" maxlength="50" value="${esc(g.name)}"></label>
+    <div class="form-row"><label class="field" for="eg-freq">Frecuencia<select id="eg-freq" class="input">${opt('daily','Diaria')}${opt('weekly','Por semana')}${opt('monthly','Por mes')}</select></label>
+      ${fq!=='daily'?`<label class="field" for="eg-target">Días ${fq==='weekly'?'por semana':'al mes'}<input id="eg-target" class="input num" type="number" min="1" max="${maxT}" value="${tgt}"></label>`:''}</div>
+    <div class="form-row"><label class="field" for="eg-qty">Cantidad meta (opcional)<input id="eg-qty" class="input num" type="number" min="0" step="any" value="${hasQty(g)?g.qty:''}" placeholder="Ej. 7000"></label>
+      <label class="field" for="eg-unit">Unidad<input id="eg-unit" class="input" maxlength="12" value="${esc(g.unit||'')}" placeholder="pasos, min, L…"></label></div>
+    <p class="muted" style="font-size:13px">Si cambias la cantidad, cuenta desde hoy: tus días anteriores se quedan como los registraste. Deja la cantidad vacía para marcar la meta solo como cumplida o no.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Guardar cambios</button><button class="btn btn-ghost" type="button" data-act="close">Cancelar</button></div></form>`;
 }
 function viewGoalQty(gid){
   const g=(myDoc.goals||[]).find(x=>x.id===gid);if(!g)return '';const sg=SUGERIDAS.find(x=>x.name.toLowerCase()===g.name.toLowerCase()&&x.qty)||{};
@@ -839,16 +857,16 @@ function viewGoalQty(gid){
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Guardar</button>${hasQty(g)?`<button class="btn btn-ghost" type="button" data-act="gqtyoff" data-goal="${esc(g.id)}">Ya no medir cantidad</button>`:''}</div></form>`;
 }
 function setAmount(g,d,val){
-  const beforeA=achievements(myDoc,d),before=beforeA.length;
+  const Q=qtyAt(g,d);const beforeA=achievements(myDoc,d),before=beforeA.length;
   myDoc.amounts=myDoc.amounts||{};const a={...(myDoc.amounts[d]||{})};const list=new Set(myDoc.checks[d]||[]);
   if(val==null){delete a[g.id];list.delete(g.id)}
-  else{a[g.id]=val;if(val>=Number(g.qty))list.add(g.id);else list.delete(g.id)}
+  else{a[g.id]=val;if(val>=Q)list.add(g.id);else list.delete(g.id)}
   if(Object.keys(a).length)myDoc.amounts[d]=a;else delete myDoc.amounts[d];
   if(list.size)myDoc.checks[d]=[...list];else delete myDoc.checks[d];
   state.sheet=false;saveMe();
   if(val!=null&&achievements(myDoc,d).length>before){confetti();newsAch(d,beforeA)}
-  else if(val!=null&&val>=Number(g.qty))toast(`✓ ¡${g.name} cumplida!`);
-  else if(val!=null&&val>0)toast(`Guardado: ${fmtQty(val,g)} ${g.unit||''} · ${Math.round(Math.min(1,val/g.qty)*100)}% del día.${val/g.qty>=.8?' ¡Casi!':''}`);
+  else if(val!=null&&val>=Q)toast(`✓ ¡${g.name} cumplida!`);
+  else if(val!=null&&val>0)toast(`Guardado: ${fmtQty(val,g)} ${g.unit||''} · ${Math.round(Math.min(1,val/Q)*100)}% del día.${val/Q>=.8?' ¡Casi!':''}`);
 }
 
 /* ---------- metas nuevas ---------- */
@@ -1056,8 +1074,9 @@ function viewWelcome(){
 
 function goalRowSub(p,g,day){
   if(hasQty(g)){const a=amountOf(p,g,day);const v=dayVal(p,g,day);
-    if(a!=null&&v<1)return `${fmtQty(a,g)} de ${fmtQty(g.qty,g)} ${g.unit||''} · ${Math.round(v*100)}%${v>=.8?' · ¡Casi!':''}`;
-    if(!isDone(p,g,day)&&a==null)return `Meta: ${fmtQty(g.qty,g)} ${g.unit||''} · toca para registrar`}
+    const Q=qtyAt(g,day);
+    if(a!=null&&v<1)return `${fmtQty(a,g)} de ${fmtQty(Q,g)} ${g.unit||''} · ${Math.round(v*100)}%${v>=.8?' · ¡Casi!':''}`;
+    if(!isDone(p,g,day)&&a==null)return `Meta: ${fmtQty(Q,g)} ${g.unit||''} · toca para registrar`}
   if(g.freq==='daily'){const s=streak(g.created,d=>isDone(p,g,d));return s.cur?`Racha de ${s.cur} ${s.cur===1?'día':'días'}`:'Diaria'}
   if(g.freq==='weekly'){const ws=weekStart(day);const r=goalProgress(p,g,ws,addDays(ws,6));return `${r?fmtDone(r.done):0} de ${g.target} esta semana`}
   const k=monthKey(day);const r=goalProgress(p,g,monthStart(k),monthEnd(k));return `${r?fmtDone(r.done):0} de ${g.target} este mes`;
@@ -1130,15 +1149,15 @@ function viewMetas(){
   const list=active.length?active.map(g=>{
     const confirm=state.confirm==='archive:'+g.id;
     return `<div class="goal manage" style="cursor:default"><span class="tile c-${g.color}">${ico(g.icon)}</span>
-      <span class="g-txt"><span class="g-name">${esc(g.name)}</span><br><span class="g-sub">${esc(freqText(g))} · desde el ${fmtShort(g.created)}</span>${readOnly?'':`<br><button class="link" data-act="gqty" data-goal="${esc(g.id)}" style="font-size:13px">${hasQty(g)?'Cambiar cantidad':'Medir cantidad'}</button>`}${g.note?`<br><span class="chip" style="margin-top:4px">${/90\/10/.test(g.note)?'Regla 90/10 · 1 día libre':esc(g.note.length>40?g.note.slice(0,40)+'…':g.note)}</span>`:''}</span>
+      <span class="g-txt"><span class="g-name">${esc(g.name)}</span><br><span class="g-sub">${esc(freqText(g))} · desde el ${fmtShort(g.created)}</span>${g.note?`<br><span class="chip" style="margin-top:4px">${/90\/10/.test(g.note)?'Regla 90/10 · 1 día libre':esc(g.note.length>40?g.note.slice(0,40)+'…':g.note)}</span>`:''}</span>
       <span class="ctrls">${g.freq!=='daily'?`<span style="display:flex;gap:6px;align-items:center"><button class="icon-btn" data-act="tgt" data-goal="${esc(g.id)}" data-d="-1" aria-label="Menos días" ${readOnly?'disabled':''}>${ico('minus')}</button><b class="num" style="min-width:20px;text-align:center">${g.target}</b><button class="icon-btn" data-act="tgt" data-goal="${esc(g.id)}" data-d="1" aria-label="Más días" ${readOnly?'disabled':''}>${ico('plus')}</button></span>`:''}
-      <span style="display:flex;gap:6px;flex:none">${state.confirm==='delgoal:'+g.id?'':`<button class="${confirm?'btn btn-sm':'icon-btn'}" data-act="archive" data-goal="${esc(g.id)}" aria-label="Archivar meta" title="Archivar" ${readOnly?'disabled':''}>${confirm?'Archivar':ico('archive')}</button>`}
+      <span style="display:flex;gap:6px;flex:none">${confirm||state.confirm==='delgoal:'+g.id?'':`<button class="icon-btn" data-act="editgoal" data-goal="${esc(g.id)}" aria-label="Editar meta" title="Editar" ${readOnly?'disabled':''}>${ico('pencil')}</button>`}${state.confirm==='delgoal:'+g.id?'':`<button class="${confirm?'btn btn-sm':'icon-btn'}" data-act="archive" data-goal="${esc(g.id)}" aria-label="Archivar meta" title="Archivar" ${readOnly?'disabled':''}>${confirm?'Archivar':ico('archive')}</button>`}
       ${confirm?'':delGoalBtn(g)}</span></span></div>`}).join('')
     :`<p class="muted">Todavía no tienes metas activas.</p>`;
   return `<button class="btn btn-ghost btn-sm" data-act="tab" data-tab="hoy" style="align-self:flex-start">${ico('left')}Volver a Hoy</button>`+topBar('Mis metas','Elige qué quieres cumplir y con qué frecuencia. Tu avance se mide contra tus propias metas.')+banners()+
    `<div class="grid g-main">
      <section class="card"><div class="card-head"><h2>Metas activas</h2><span class="chip num">${active.length}</span></div><div class="stack">${list}</div>
-       ${active.length?`<p class="muted" style="font-size:13px;margin-top:12px">${ico('archive')} <b>Archivar</b> guarda tu historial y la meta deja de contar desde hoy. ${ico('trash')} <b>Borrar</b> la elimina con todos sus checks, como si nunca la hubieras creado.</p>`:''}
+       ${active.length?`<p class="muted" style="font-size:13px;margin-top:12px">${ico('pencil')} <b>Editar</b> cambia el nombre, la frecuencia o la cantidad. ${ico('archive')} <b>Archivar</b> guarda tu historial y la meta deja de contar desde hoy. ${ico('trash')} <b>Borrar</b> la elimina con todos sus checks, como si nunca la hubieras creado.</p>`:''}
        ${archivedHtml}</section>
      <section class="stack" style="gap:16px">
        <div class="card pastel c-lav"><h3 style="margin-bottom:12px">Sugerencias rápidas</h3><div style="display:flex;flex-wrap:wrap;gap:8px">${sugg||'<p>Ya agregaste todas las sugerencias.</p>'}</div></div>
@@ -1464,7 +1483,7 @@ function render(){
   const ocl=document.getElementById('chat-list'),oin=document.getElementById('chat-input');
   const keep=ocl?{top:ocl.scrollTop,near:ocl.scrollHeight-ocl.scrollTop-ocl.clientHeight<120,val:oin?oin.value:''}:null;
   if(state.sheet==='chat')markChatSeen();
-  if(joined&&state.sheet){sh.innerHTML=state.sheet==='chat'?viewChat():state.sheet==='install'?viewInstall():(typeof state.sheet==='string'&&state.sheet.startsWith('qty:'))?viewQty(state.sheet.slice(4)):(typeof state.sheet==='string'&&state.sheet.startsWith('gqty:'))?viewGoalQty(state.sheet.slice(5)):(typeof state.sheet==='string'&&state.sheet.startsWith('notify:'))?viewNotify(state.sheet.slice(7)):(typeof state.sheet==='string'&&state.sheet.startsWith('person:'))?viewPerson(state.sheet.slice(7)):viewSheet();sh.hidden=false}else{sh.hidden=true;sh.innerHTML=''}
+  if(joined&&state.sheet){sh.innerHTML=state.sheet==='chat'?viewChat():(typeof state.sheet==='string'&&state.sheet.startsWith('editgoal:'))?viewEditGoal(state.sheet.slice(9)):state.sheet==='install'?viewInstall():(typeof state.sheet==='string'&&state.sheet.startsWith('qty:'))?viewQty(state.sheet.slice(4)):(typeof state.sheet==='string'&&state.sheet.startsWith('gqty:'))?viewGoalQty(state.sheet.slice(5)):(typeof state.sheet==='string'&&state.sheet.startsWith('notify:'))?viewNotify(state.sheet.slice(7)):(typeof state.sheet==='string'&&state.sheet.startsWith('person:'))?viewPerson(state.sheet.slice(7)):viewSheet();sh.hidden=false}else{sh.hidden=true;sh.innerHTML=''}
   if(state.sheet==='chat'){const n=document.getElementById('chat-list');if(n)n.scrollTop=(!keep||keep.near)?n.scrollHeight:keep.top;const i=document.getElementById('chat-input');if(i&&keep&&keep.val)i.value=keep.val}
 }
 
@@ -1526,8 +1545,9 @@ document.addEventListener('click',e=>{
      myDoc.goals=myDoc.goals.filter(x=>x.id!==id);for(const d of Object.keys(myDoc.checks||{})){const l=myDoc.checks[d].filter(x=>x!==id);if(l.length)myDoc.checks[d]=l;else delete myDoc.checks[d]}
      state.confirm=null;saveMe();chat=chat.filter(m=>m.id!=='goal_'+id);db.doc('chat/goal_'+id).delete().catch(()=>{});toast(`Borraste “${g.name}”.`)}else{state.confirm='delgoal:'+id;render()}break}
    case 'qty':{if(readOnly)return;const d=state.day;if(d>T0||d<addDays(T0,-3)){toast('Solo puedes registrar hasta 3 días atrás.');return}state.sheet='qty:'+b.dataset.goal;render();setTimeout(()=>{const el=document.getElementById('q-val');if(el)el.focus()},50);break}
-   case 'qtyfull':{const g=myDoc.goals.find(x=>x.id===b.dataset.goal);if(g)setAmount(g,state.day,Number(g.qty));break}
+   case 'qtyfull':{const g=myDoc.goals.find(x=>x.id===b.dataset.goal);if(g)setAmount(g,state.day,qtyAt(g,state.day));break}
    case 'qtyclear':{const g=myDoc.goals.find(x=>x.id===b.dataset.goal);if(g){setAmount(g,state.day,null);toast('Registro borrado.')}break}
+   case 'editgoal':{if(readOnly)return;state.editFreq=null;state.sheet='editgoal:'+b.dataset.goal;render();break}
    case 'gqty':{if(readOnly)return;state.sheet='gqty:'+b.dataset.goal;render();break}
    case 'gqtyoff':{const g=myDoc.goals.find(x=>x.id===b.dataset.goal);if(!g)return;delete g.qty;delete g.unit;state.sheet=false;saveMe();toast('Listo, esta meta vuelve a marcarse solo como cumplida o no.');break}
    case 'greet':{const id=b.dataset.id,n=(nameOf(id)||'').split(' ')[0];state.sheet=false;state.tab='chat';try{history.replaceState(null,'','#chat')}catch(_){}render();scrollChat();
@@ -1557,6 +1577,8 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('change',async e=>{
   const t=e.target;
+  if(t.id==='eg-freq'){const n=document.getElementById('eg-name'),q=document.getElementById('eg-qty'),u=document.getElementById('eg-unit');const keep=[n&&n.value,q&&q.value,u&&u.value];state.editFreq=t.value;render();
+    const n2=document.getElementById('eg-name'),q2=document.getElementById('eg-qty'),u2=document.getElementById('eg-unit');if(n2)n2.value=keep[0]||'';if(q2)q2.value=keep[1]||'';if(u2)u2.value=keep[2]||'';return}
   if(t.id==='join-sponsor'){state.joinSponsor=t.value;return}
   if(t.dataset&&t.dataset.act==='sfield'){const sh=myDoc.share;const k=t.dataset.k;sh.fields=t.checked?[...new Set([...sh.fields,k])]:sh.fields.filter(f=>f!==k);syncShared();saveMe();return}
   if(t.id==='pf-sponsor'){const v=t.value;myDoc.sponsor=people[v]&&v!==uid?v:null;saveMe();toast(myDoc.sponsor?`Tu sponsor es ${people[v].name}.`:'Quitaste a tu sponsor.');return}
@@ -1593,6 +1615,20 @@ document.addEventListener('submit',e=>{
   if(f.id==='qty-form'){const g=myDoc.goals.find(x=>x.id===f.dataset.goal);if(!g)return;const raw=document.getElementById('q-val').value.trim();
     if(raw===''){setAmount(g,state.day,null);return}const v=Number(raw.replace(',','.'));if(!isFinite(v)||v<0){toast('Escribe un número válido.');return}
     setAmount(g,state.day,Math.round(v*100)/100);return}
+  if(f.id==='edit-goal-form'){const g=myDoc.goals.find(x=>x.id===f.dataset.goal);if(!g)return;
+    const name=document.getElementById('eg-name').value.trim().slice(0,50);if(!name){toast('Escribe el nombre de la meta.');return}
+    const freq=document.getElementById('eg-freq').value;const tEl=document.getElementById('eg-target');const max=freq==='weekly'?7:31;
+    const target=freq==='daily'?1:Math.max(1,Math.min(max,Math.round(Number(tEl&&tEl.value)||1)));
+    const qRaw=String(document.getElementById('eg-qty').value).trim().replace(',','.'),unit=document.getElementById('eg-unit').value.trim().slice(0,12);
+    let q=null;if(qRaw!==''){q=Number(qRaw);if(!isFinite(q)||q<=0){toast('La cantidad debe ser un número mayor a 0, por ejemplo 7000.');return}q=Math.round(q*100)/100}
+    const oldQ=hasQty(g)?Number(g.qty):null;
+    g.name=name;g.freq=freq;g.target=target;
+    if(q==null){delete g.qty;delete g.unit;delete g.qtyHist}
+    else{if(oldQ!=null&&oldQ!==q){const h=Array.isArray(g.qtyHist)&&g.qtyHist.length?g.qtyHist.filter(x=>x.from<T0):[{from:g.created,qty:oldQ}];h.push({from:T0,qty:q});g.qtyHist=h}
+      g.qty=q;g.unit=unit;
+      /* re-evaluar desde hoy los días con cantidad registrada */
+      for(const d of Object.keys(myDoc.amounts||{})){if(d<T0)continue;const a=myDoc.amounts[d][g.id];if(typeof a!=='number')continue;const l=new Set(myDoc.checks[d]||[]);a>=q?l.add(g.id):l.delete(g.id);if(l.size)myDoc.checks[d]=[...l];else delete myDoc.checks[d]}}
+    state.sheet=false;state.editFreq=null;saveMe();toast(`Listo, actualizaste “${name}”.`);return}
   if(f.id==='gqty-form'){const g=myDoc.goals.find(x=>x.id===f.dataset.goal);if(!g)return;const q=Number(String(document.getElementById('gq-qty').value).replace(',','.'));
     if(!isFinite(q)||q<=0){toast('Escribe la cantidad meta, por ejemplo 10000.');return}
     g.qty=Math.round(q*100)/100;g.unit=document.getElementById('gq-unit').value.trim().slice(0,12);state.sheet=false;saveMe();toast(`Listo: ${g.name} ahora se mide en ${g.unit||'cantidad'}.`);return}
